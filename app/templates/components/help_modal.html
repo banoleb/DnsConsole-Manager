@@ -1,0 +1,36 @@
+{% raw %}
+<!-- Help Modal -->
+<div v-if="modals.help" class="modal-backdrop" @click.self="closeHelpModal">
+<div class="modal">
+      <div class="modal-header">
+            <h5 class="modal-title">Available dnsdist Commands</h5>
+            <button class="modal-close" @click="closeHelpModal">×</button>
+      </div>
+      <div class="modal-body">
+            <div class="mb-3">
+            <input
+                  type="text"
+                  class="form-control"
+                  v-model="commandSearch"
+                  placeholder="Search commands..."
+            />
+            </div>
+            <div v-if="filteredCommands.length === 0" class="alert alert-info">
+            No commands available or no matches found
+            </div>
+            <div v-else>
+            <div
+                  v-for="command in filteredCommands"
+                  :key="command"
+                  class="command-item"
+            >
+                  {{ command }}
+            </div>
+            </div>
+      </div>
+      <div class="modal-footer">
+            <button class="btn" @click="closeHelpModal">Close</button>
+      </div>
+</div>
+</div>
+{% endraw %}

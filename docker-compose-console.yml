@@ -1,0 +1,17 @@
+---
+services:
+  console:
+    build: .
+    container_name: dist-manager
+    network_mode: host
+    # ports:
+    #   - "5000:5000"
+    # volumes:
+    #   # Persist database
+    #   - ./data:/data
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    command: console

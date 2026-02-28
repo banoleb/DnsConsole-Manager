@@ -1,0 +1,41 @@
+{% raw %}
+<span class="navbar-brand">DnsConsole-Manager</span>
+<div class="navbar-sync-status">
+    <span class="sync-status-label" style="margin-right: 20px;">
+        Backend: <span :class="getBackendStatusClass(backendHealth.status)">{{ getBackendStatusText(backendHealth.status) }}</span>
+    </span>
+    <span v-if="syncStatus.last_sync_time" class="sync-status-label">
+        Last sync: {{ formatSyncTime(syncStatus.last_sync_time) }}
+        <span :class="getSyncStatusClass(syncStatus.status)">{{ syncStatus.status }}</span>
+    </span>
+    <span v-else class="sync-status-label">
+        Sync status: <span class="sync-status-never">{{ syncStatus.status }}</span>
+
+    </span>
+
+    <div v-if="syncStatus.status === 'Failed'" class="tooltip-container">
+        <span class="help-icon">?</span>
+        <span class="tooltip-text">{{ syncStatus.error_message  }}</span>
+    </div>
+    <div v-if="syncStatus.status === 'Partial'" class="tooltip-container">
+        <span class="help-icon">?</span>
+        <span class="tooltip-text">{{ syncStatus.error_message  }}</span>
+    </div>
+</div>
+<div class="navbar-buttons">
+    <a href="/" :class="['btn', 'btn-sm', { active: isActivePage('/') }]" style="text-decoration: none; color: inherit;">Dashboard</a>
+    <a href="/agents" :class="['btn', 'btn-sm', { active: isActivePage('/agents') }]" style="text-decoration: none; color: inherit;">Agents</a>
+    <a href="/dynblock-rules" :class="['btn', 'btn-sm', { active: isActivePage('/dynblock-rules') }]" style="text-decoration: none; color: inherit;">Rules</a>
+    <a href="/rules" :class="['btn', 'btn-sm', { active: isActivePage('/rules') }]" style="text-decoration: none; color: inherit;">Summary Rules</a>
+    <a href="/summary" :class="['btn', 'btn-sm', { active: isActivePage('/summary') }]" style="text-decoration: none; color: inherit;">Summary Clients</a>
+    <a href="/audit" :class="['btn', 'btn-sm', { active: isActivePage('/audit') }]" style="text-decoration: none; color: inherit;">Audit</a>
+
+    <!-- <button class="btn btn-sm" @click="refreshAgents">
+    <span :class="{ rotating: isRefreshing }"></span> Refresh
+    </button> -->
+    <button class="btn btn-sm" @click="toggleTheme" :title="isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'">
+        {{ isDarkTheme ? '☀️' : '🌙' }}
+    </button>
+    <a href="https://github.com/banoleb/dnsdist-webapi" class="btn btn-sm" style="text-decoration: none; color: inherit;">v0.0.1</a>
+</div>
+{% endraw %}

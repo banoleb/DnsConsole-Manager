@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+{% raw %}
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar">
+            {% endraw %}
+            {% include 'components/navbar.html' %}
+            {% raw %}
+        </nav>
+    </div>
+
+    <div id="app">
+        <!-- Main Container -->
+        <div class="container">
+
+
+            <!-- Add Rule Form -->
+            <div class="card mb-4">
+
+                <div class="card-body">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div>
+                            <h2>DynBlock Rules</h2>
+                            <p class="text-muted" style="margin-bottom: 0;">Manage custom DynBlock rules to control network traffic blocking</p>
+                        </div>
+                        <button class="btn btn-primary" @click="openTemplateManagerModal" style="white-space: nowrap;">
+                            📝 Manage Templates
+                        </button>
+                    </div>
+                    <form @submit.prevent="addDynBlockRule">
+                        <table style="width: 100%;" class="mx-4">
+                            <tr>
+                                <td>
+                                    <div class="mb-3">
+                                        <label class="form-label">
+                                           Rules Group <span class="text-muted">(must)</span>
+                                        </label>
+                                        <select
+                                            class="form-control"
+                                            v-model="newDynBlockRule.group_id"
+                                        >
+                                            <option value="">All Groups</option>
+                                            <option v-for="group in groups" :key="group.id" :value="group.id">
+                                                {{ group.name }}
+                                            </option>
+                                        </select>
+                                        <small class="form-text text-muted">
+                                            Select a group to send this rule only to agents in that group
+                                        </small>
+                                    </div>
+                                </td>
+                                <td>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">
+                                            Name <span class="text-muted">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            v-model="newDynBlockRule.name"
+                                            placeholder="e.g., Block Abusive IPs"
+                                        />
+                                        <small class="form-text text-muted">
+                                            Set name (must)
+                                        </small>
+                                    </div>
+
+
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="mb-3">
+                                        <label class="form-label">
+                                            Description
+                                        </label>
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            v-model="newDynBlockRule.description"
+                                            placeholder="e.g., Block specific IP for testing"
+                                        />
+                                        <small class="form-text text-muted">
+                                            Set Description (optional)
+                                        </small>
+                                    </div>
+
+
+                                </td>
+                                <td>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">
+                                            UUID Generator
+                                        </label>
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <input
+                                                type="text"
+                                                class="form-control"
+                                                v-model="generatedUuid"
+                                                placeholder="Click 'Generate UUID' to create a new UUID"
+                                                readonly="true"
+                                                style="flex: 1;"
+                                            />
+                                            <button
+                                                type="button"
+                                                class="btn btn-primary"
+                                                @click="generateUuid"
+                                                style="white-space: nowrap; width: 30%;"
+                                            >
+                                                🔄 Generate UUID
+                                            </button>
+
+                                        </div>
+                                        <small class="form-text text-muted">
+                                            Generate a unique identifier for tracking or reference purposes (renew command manual)
+                                        </small>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+
+
+
+
+                        <div class="mb-3" style="position: relative;">
+                            <label class="form-label">
+                                Rule Command <span class="required">*</span> (use UUID Generator to create new UUID)
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="newDynBlockRule.rule_command"
+                                @input="onRuleCommandInput"
+                                @keydown="onRuleCommandKeydown"
+                                @blur="hideTemplateDropdown"
+                                ref="ruleCommandInput"
+                                placeholder='e.g., addDynBlocks({"192.168.1.100"}, "Blocked for abuse", 60)'
+                                required
+                                autocomplete="off"
+                            />
+                            <!-- Template dropdown -->
+                            <div
+                                v-if="showTemplateDropdown && filteredTemplates.length > 0"
+                                style="position: inherit; z-index: 100000; border: 1px solid #4a4a4a; border-radius: 4px; max-height: 500px; overflow-y: auto; width: 100%; margin-top: 2px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"
+                            >
+                                <div
+                                    v-for="(template, index) in filteredTemplates"
+                                    :key="template.id"
+                                    @click="selectTemplate(template)"
+                                    :style="{
+                                        padding: '10px',
+                                        cursor: 'pointer',
+                                        backgroundColor: index === selectedTemplateIndex ? '#3a3a3a' : 'transparent',
+                                        borderBottom: index < filteredTemplates.length - 1 ? '1px solid #3a3a3a' : 'none'
+                                    }"
+                                    @mouseover="selectedTemplateIndex = index"
+                                >
+                                    <div style="font-weight: bold; color: #4a9eff; margin-bottom: 4px;">
+                                        {{ template.name }}
+                                    </div>
+                                    <div style="font-size: 0.85rem; font-family: monospace; color: #b0b0b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        {{ template.template }}
+                                    </div>
+                                    <div v-if="template.description" style="font-size: 0.8rem; color: #888; margin-top: 4px;">
+                                        {{ template.description }}
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted">
+                                Start typing to see template suggestions. Use arrow keys to navigate and Enter to select.
+                            </small>
+                            <button type="submit" class="btn btn-success" style="width: 100%;">
+                                Add Rule
+                            </button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+            <!-- Existing DynBlock Rules List -->
+            <div class="card">
+                <div class="card-header primary">
+                    <h6>📋 Custom DynBlock Rules</h6>
+
+                    <select class="form-control" v-model="selectedGroupFilter" style="width: 30%;">
+                        <option value="">All Groups</option>
+                        <option v-for="group in groups" :key="group.id" :value="group.id">
+                            {{ group.name }}
+                        </option>
+                    </select>
+                </div>
+                <div id="app">
+                    <div v-if="dynBlockRuleMessage" :class="['alert', `alert-${dynBlockRuleMessage.type}`]" class="mt-3">
+                {{ dynBlockRuleMessage.text }}
+            </div>
+                <div class="card-body">
+
+                    <div v-if="loadingDynBlockRules" class="text-muted text-center">
+                        Loading rules...
+                    </div>
+                    <div v-else-if="filteredDynBlockRulesList.length === 0" class="text-muted text-center">
+                        No DynBlock rules found for the selected filter.
+                    </div>
+                    <div v-else>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #4a4a4a;">
+                                    <th style="text-align: left; padding: 0.5rem;">Name</th>
+                                    <th style="text-align: left; padding: 0.5rem;">Command</th>
+                                    <th style="text-align: left; padding: 0.5rem;">Description</th>
+                                    <th style="text-align: left; padding: 0.5rem;">Group</th>
+                                    <th style="text-align: center; padding: 0.5rem; width: 100px;">Active</th>
+                                    <th style="text-align: center; padding: 0.5rem; width: 250px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="rule in filteredDynBlockRulesList"
+                                    :key="rule.id"
+                                    style="border-bottom: 1px solid #2a2a2a;"
+                                >
+                                    <td style="padding: 0.75rem;">
+                                        {{ rule.name || '-' }}
+                                    </td>
+                                    <td style="padding: 0.75rem; font-family: monospace; font-size: 0.9rem;">
+                                        {{ rule.rule_command }}
+                                    </td>
+                                    <td style="padding: 0.75rem;">
+                                        {{ rule.description || '-' }}
+                                    </td>
+                                    <td style="padding: 0.75rem;">
+                                        <span v-if="rule.group_name" class="badge badge-primary">
+                                            {{ rule.group_name }}
+                                        </span>
+                                        <span v-else class="text-muted">All Groups</span>
+                                    </td>
+                                    <td style="padding: 0.75rem; text-align: center;">
+                                        <div class="tooltip-container">
+                                            <span class="help-icon">?</span>
+                                            <div class="tooltip-text"><h4>All rules are synchronized by UUID.</h4>If you edit or delete a rule, it shouldn't change on agents. Disable it first, then change it.</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input
+                                                type="checkbox"
+                                                :checked="rule.is_active"
+                                                @change="toggleRuleActive(rule)"
+                                            />
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </td>
+                                    <td style="padding: 0.75rem; text-align: center;">
+                                        <button
+                                            class="btn btn-sm btn-info"
+                                            @click="openEditModal(rule)"
+                                            style="margin-right: 0.5rem;"
+                                        >
+                                            ✏️ Edit
+                                        </button>
+                                        <!-- <button
+                                            class="btn btn-sm btn-primary"
+                                            @click="sendDynBlockRule(rule)"
+                                            style="margin-right: 0.5rem;"
+                                            :disabled="!rule.is_active"
+                                        >
+                                            📤 Send
+                                        </button> -->
+                                        <button
+                                            class="btn btn-sm"
+                                            style="background-color: #dc3545; border-color: #dc3545; color: #fff;"
+                                            @click="deleteDynBlockRule(rule)"
+                                        >
+                                            🗑️ Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Modal -->
+        <div v-if="showEditModal" class="modal-backdrop" @click.self="closeEditModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h5 class="modal-title">✏️ Edit DynBlock Rule</h5>
+                    <button @click="closeEditModal" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div  >
+                    <h3>👉 Before editing, deactivate the rule. Make sure it has disappeared from the agents.</h3>
+                    <h3>   👉 And only after that edit and turn on (enable) again</h3>
+                    </div>
+                    <form @submit.prevent="saveEditedRule">
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Agent Group <span class="text-muted">(optional)</span>
+                            </label>
+                            <select
+                                class="form-control"
+                                v-model="editingRule.group_id"
+                            >
+                                <option value="">All Groups</option>
+                                <option v-for="group in groups" :key="group.id" :value="group.id">
+                                    {{ group.name }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Name <span class="text-muted">(optional)</span>
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="editingRule.name"
+                                placeholder="e.g., Block Abusive IPs"
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Rule Command <span class="required">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="editingRule.rule_command"
+                                placeholder='e.g., addDynBlocks({"192.168.1.100"}, "Blocked for abuse", 60)'
+                                required
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Description <span class="text-muted">(optional)</span>
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                v-model="editingRule.description"
+                                placeholder="e.g., Block specific IP for testing"
+                            />
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" @click="closeEditModal">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-success">
+                                Save Changes
+                            </button>
+                        </div>
+                    </form>
+                    <div v-if="editModalMessage" :class="['alert', `alert-${editModalMessage.type}`]" class="mt-3">
+                        {{ editModalMessage.text }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Template Manager Modal -->
+        <div v-if="showTemplateManagerModal" class="modal-backdrop" @click.self="closeTemplateManagerModal">
+            <div class="modal" style="max-width: 1700px;">
+                <div class="modal-header">
+                    <h5 class="modal-title">📝 Manage Rule Command Templates</h5>
+                    <button @click="closeTemplateManagerModal" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- Add New Template Form -->
+                    <div class="card mb-4">
+                        <div class="card-header success">
+                            <h6>{{ editingTemplate.id ? '✏️ Edit Template' : '➕ Add New Template' }}</h6>
+                        </div>
+                        <div class="card-body">
+                            <form @submit.prevent="saveTemplate">
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Template Name <span class="required">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        v-model="editingTemplate.name"
+                                        placeholder="e.g., Block IP Address"
+                                        required
+                                    />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Template Rule <span class="required">*</span>
+                                    </label>
+                                    <textarea
+                                        class="form-control"
+                                        v-model="editingTemplate.template"
+                                        placeholder='e.g., addDynBlocks({"{{r_uuid}}"}, "{{r_name}}", 60)'
+                                        rows="3"
+                                        required
+                                        style="font-family: monospace;"
+                                    ></textarea>
+                                    <small class="form-text text-muted">
+                                        Use {{r_name}} for rule name and {{r_uuid}} for UUID placeholders
+                                    </small>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        Description <span class="text-muted">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        v-model="editingTemplate.description"
+                                        placeholder="e.g., Template for blocking IP addresses"
+                                    />
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <button
+                                        v-if="editingTemplate.id"
+                                        type="button"
+                                        class="btn btn-secondary"
+                                        @click="cancelEditTemplate"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="btn btn-success">
+                                        {{ editingTemplate.id ? 'Update Template' : 'Add Template' }}
+                                    </button>
+                                </div>
+                            </form>
+                            <div v-if="templateModalMessage" :class="['alert', `alert-${templateModalMessage.type}`]" class="mt-3">
+                                {{ templateModalMessage.text }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Existing Templates List -->
+                    <div class="card">
+                        <div class="card-header primary">
+                            <h6>📋 Existing Templates</h6>
+                        </div>
+                        <div class="card-body">
+                            <div v-if="ruleCommandTemplates.length === 0" class="text-muted text-center">
+                                No templates found. Create your first template above.
+                            </div>
+                            <div v-else>
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid #4a4a4a;">
+                                            <th style="text-align: left; padding: 0.5rem; width: 5%;">Name</th>
+                                            <th style="text-align: left; padding: 0.5rem; width: 65%; ">Template</th>
+                                            <th style="text-align: left; padding: 0.5rem; width: 20%;">Description</th>
+                                            <th style="text-align: center; padding: 0.5rem; width: 10%;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr
+                                            v-for="template in ruleCommandTemplates"
+                                            :key="template.id"
+                                            style="border-bottom: 1px solid #2a2a2a;"
+                                        >
+                                            <td style="padding: 0.75rem;">
+                                                {{ template.name }}
+                                            </td>
+                                            <td style="padding: 0.75rem; font-family: monospace; font-size: 0.85rem; max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="template.template">
+                                                {{ template.template }}
+                                            </td>
+                                            <td style="padding: 0.75rem;">
+                                                {{ template.description || '-' }}
+                                            </td>
+                                            <td style="padding: 0.75rem; text-align: center;">
+                                                <button
+                                                    class="btn btn-sm btn-info"
+                                                    @click="editTemplate(template)"
+                                                    style="margin-right: 0.5rem;"
+                                                >
+                                                    ✏️ Edit
+                                                </button>
+                                                <button
+                                                    class="btn btn-sm"
+                                                    style="background-color: #dc3545; border-color: #dc3545; color: #fff;"
+                                                    @click="deleteTemplate(template)"
+                                                >
+                                                    🗑️ Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="closeTemplateManagerModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+<script src="{{ url_for('static', filename='js/dynblock_rules.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+</body>
+</html>

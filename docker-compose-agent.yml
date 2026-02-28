@@ -1,0 +1,38 @@
+---
+# change  DNSDIST_KEY WEBAPI_TOKEN
+services:
+  agent:
+    build: .
+    container_name: dist-agent1
+    network_mode: host
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WEBAPI_PORT=8080
+      - DNSDIST_CONSOLE_HOST=127.0.0.1
+      - DNSDIST_CONSOLE_PORT=5199
+      - DNSDIST_KEY=YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk=
+      - WEBAPI_TOKEN=pNuqSH3JvTgaZS3HfsP0nKUV97RZ-Ig9ZRJZTFL0wIQ
+    # or use in .env file
+    # env_file:
+    #   - .env
+    restart: unless-stopped
+    command: agent
+
+  # # if you need to use multiple agents on one host
+
+  # agent2:
+  #   build: .
+  #   container_name: dist-agent2
+  #   network_mode: host
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #     - WEBAPI_PORT=8081
+  #     - DNSDIST_CONSOLE_HOST=127.0.0.1
+  #     - DNSDIST_CONSOLE_PORT=5299
+  #     - DNSDIST_KEY=YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk=
+  #     - WEBAPI_TOKEN=pNuqSH3JvTgaZS3HfsP0nKUV97RZ-Ig9ZRJZTFL0wIQ
+  #   # or use in .env file
+  #   env_file:
+  #     - .env
+  #   restart: unless-stopped
+  #   command: agent

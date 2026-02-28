@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+{% raw %}
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar">
+            {% endraw %}
+            {% include 'components/navbar.html' %}
+            {% raw %}
+        </nav>
+    </div>
+    <div id="app">
+        <!-- Main Container -->
+        <div class="container">
+            <div class="card-header">
+                <h2>🚨This tab is still under development🚨</h2><hr>
+            </div>
+            <!-- Agent Filter -->
+            <div class="mb-4">
+                <label for="agentFilter" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Filter by Agent:</label>
+                <select
+                    id="agentFilter"
+                    v-model="selectedAgent"
+                    class="form-control"
+                    style="max-width: 400px;"
+                >
+                    <option value="">All Agents</option>
+                    <option v-for="agent in agents" :key="agent.agent_name" :value="agent.agent_name">
+                        {{ agent.agent_name }}
+                    </option>
+                </select>
+            </div>
+
+            <!-- Top Clients Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>👥 Top Clients</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Search Bar -->
+                    <div class="mb-3">
+                        <input
+                            type="text"
+                            class="form-control"
+                            v-model="clientsSearchQuery"
+                            placeholder="Search clients by agent, IP address..."
+                            style="max-width: 600px;"
+                        />
+                    </div>
+
+                    <!-- Table -->
+                    <div v-if="loading" class="text-center text-muted">
+                        Loading top clients...
+                    </div>
+                    <div v-else-if="filteredClients.length === 0" class="alert alert-info">
+                        No top clients found
+                    </div>
+                    <div v-else>
+                        <div style="overflow-x: auto;">
+                            <table class="rules-table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr>
+                                        <th @click="sortClientsBy('agent_name')" style="cursor: pointer; width: 20%;">
+                                            Agent {{ getClientsSortIcon('agent_name') }}
+                                        </th>
+                                        <th @click="sortClientsBy('rank')" style="cursor: pointer; width: 10%;">
+                                            Rank {{ getClientsSortIcon('rank') }}
+                                        </th>
+                                        <th @click="sortClientsBy('client')" style="cursor: pointer; width: 30%;">
+                                            Client {{ getClientsSortIcon('client') }}
+                                        </th>
+                                        <th @click="sortClientsBy('queries')" style="cursor: pointer; width: 20%;">
+                                            Queries {{ getClientsSortIcon('queries') }}
+                                        </th>
+                                        <th @click="sortClientsBy('percentage')" style="cursor: pointer; width: 20%;">
+                                            Percentage {{ getClientsSortIcon('percentage') }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="client in paginatedClients" :key="`${client.agent_name}-${client.rank}`">
+                                        <td style="padding: 0.75rem;">{{ client.agent_name }}</td>
+                                        <td style="padding: 0.75rem;">{{ client.rank }}</td>
+                                        <td style="padding: 0.75rem;"><code style="font-size: 0.9rem;">{{ client.client }}</code></td>
+                                        <td style="padding: 0.75rem;">{{ client.queries }}</td>
+                                        <td style="padding: 0.75rem;">{{ client.percentage }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Controls -->
+                        <div v-if="totalClientsPages > 1" class="pagination-controls" style="margin-top: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem;">
+                            <button
+                                class="btn btn-sm"
+                                @click="clientsCurrentPage = 1"
+                                :disabled="clientsCurrentPage === 1"
+                            >
+                                First
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="clientsCurrentPage--"
+                                :disabled="clientsCurrentPage === 1"
+                            >
+                                Previous
+                            </button>
+                            <span style="padding: 0 1rem;">
+                                Page {{ clientsCurrentPage }} of {{ totalClientsPages }} ({{ filteredClients.length }} clients)
+                            </span>
+                            <button
+                                class="btn btn-sm"
+                                @click="clientsCurrentPage++"
+                                :disabled="clientsCurrentPage === totalClientsPages"
+                            >
+                                Next
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="clientsCurrentPage = totalClientsPages"
+                                :disabled="clientsCurrentPage === totalClientsPages"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Queries Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>🔍 Top Queries</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Search Bar -->
+                    <div class="mb-3">
+                        <input
+                            type="text"
+                            class="form-control"
+                            v-model="queriesSearchQuery"
+                            placeholder="Search queries by agent, domain name..."
+                            style="max-width: 600px;"
+                        />
+                    </div>
+
+                    <!-- Table -->
+                    <div v-if="loading" class="text-center text-muted">
+                        Loading top queries...
+                    </div>
+                    <div v-else-if="filteredQueries.length === 0" class="alert alert-info">
+                        No top queries found
+                    </div>
+                    <div v-else>
+                        <div style="overflow-x: auto;">
+                            <table class="rules-table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr>
+                                        <th @click="sortQueriesBy('agent_name')" style="cursor: pointer; width: 20%;">
+                                            Agent {{ getQueriesSortIcon('agent_name') }}
+                                        </th>
+                                        <th @click="sortQueriesBy('rank')" style="cursor: pointer; width: 10%;">
+                                            Rank {{ getQueriesSortIcon('rank') }}
+                                        </th>
+                                        <th @click="sortQueriesBy('query')" style="cursor: pointer; width: 35%;">
+                                            Query {{ getQueriesSortIcon('query') }}
+                                        </th>
+                                        <th @click="sortQueriesBy('count')" style="cursor: pointer; width: 20%;">
+                                            Count {{ getQueriesSortIcon('count') }}
+                                        </th>
+                                        <th @click="sortQueriesBy('percentage')" style="cursor: pointer; width: 15%;">
+                                            Percentage {{ getQueriesSortIcon('percentage') }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="query in paginatedQueries" :key="`${query.agent_name}-${query.rank}`">
+                                        <td style="padding: 0.75rem;">{{ query.agent_name }}</td>
+                                        <td style="padding: 0.75rem;">{{ query.rank }}</td>
+                                        <td style="padding: 0.75rem;"><code style="font-size: 0.9rem;">{{ query.query }}</code></td>
+                                        <td style="padding: 0.75rem;">{{ query.count }}</td>
+                                        <td style="padding: 0.75rem;">{{ query.percentage }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Controls -->
+                        <div v-if="totalQueriesPages > 1" class="pagination-controls" style="margin-top: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem;">
+                            <button
+                                class="btn btn-sm"
+                                @click="queriesCurrentPage = 1"
+                                :disabled="queriesCurrentPage === 1"
+                            >
+                                First
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="queriesCurrentPage--"
+                                :disabled="queriesCurrentPage === 1"
+                            >
+                                Previous
+                            </button>
+                            <span style="padding: 0 1rem;">
+                                Page {{ queriesCurrentPage }} of {{ totalQueriesPages }} ({{ filteredQueries.length }} queries)
+                            </span>
+                            <button
+                                class="btn btn-sm"
+                                @click="queriesCurrentPage++"
+                                :disabled="queriesCurrentPage === totalQueriesPages"
+                            >
+                                Next
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="queriesCurrentPage = totalQueriesPages"
+                                :disabled="queriesCurrentPage === totalQueriesPages"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+<script src="{{ url_for('static', filename='js/summary.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+</body>
+</html>

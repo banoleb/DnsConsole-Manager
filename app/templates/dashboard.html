@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+    <title>Dnsdist Web Console - Dashboard</title>
+</head>
+{% raw %}
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar">
+            {% endraw %}
+            {% include 'components/navbar.html' %}
+            {% raw %}
+        </nav>
+    </div>
+
+    <div id="app">
+        <div class="container">
+
+            <!-- Summary Stat Cards -->
+            <div class="dashboard-stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">🖥️</div>
+                    <div class="stat-value">{{ totalAgents }}</div>
+                    <div class="stat-label">Total Agents</div>
+                    <div class="stat-sub">
+                        <span class="stat-online">{{ onlineAgents }} online</span>
+                        <span class="stat-offline">{{ offlineAgents }} offline</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-value">{{ totalGroups }}</div>
+                    <div class="stat-label">Groups</div>
+                    <div class="stat-sub">
+                        <span class="stat-muted">{{ ungroupedAgents }} ungrouped agents</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📋</div>
+                    <div class="stat-value">{{ totalRules }}</div>
+                    <div class="stat-label">Rules</div>
+                    <div class="stat-sub">
+                        <span class="stat-muted">across all agents</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔗</div>
+                    <div class="stat-value">{{ totalServers }}</div>
+                    <div class="stat-label">Downstream Servers</div>
+                    <div class="stat-sub">
+                        <span class="stat-online">{{ upServers }} up</span>
+                        <span class="stat-offline">{{ downServers }} down</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🛡️</div>
+                    <div class="stat-value">{{ totalDynblockRules }}</div>
+                    <div class="stat-label">DynBlock Rules</div>
+                    <div class="stat-sub">
+                        <span class="stat-muted">{{ activeDynblockRules }} active</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Topology Graphic -->
+            <div class="card dashboard-topology-card">
+                <div class="card-header">
+                    <h5>🗺️ Infrastructure Topology</h5>
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <button class="btn btn-sm" @click="fetchAll" :disabled="loading">
+                            <span :class="{ rotating: loading }">↻</span> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 1rem 0.5rem;">
+                    <div v-if="loading" class="dashboard-loading">Loading infrastructure data…</div>
+                    <div v-else-if="agents.length === 0" class="alert alert-info">No agents configured yet.</div>
+                    <div v-else class="topology-scroll-wrapper">
+                        <div class="topology-canvas">
+
+                            <!-- Ungrouped agents column -->
+                            <div v-if="ungroupedAgentsList.length > 0" class="topology-group-col">
+                                <div class="topology-group-box ungrouped">
+                                    <div class="topology-group-label">
+                                        <span class="topo-icon">📦</span> No Group
+                                    </div>
+                                    <div class="topology-agents-list">
+                                        <div
+                                            v-for="agent in ungroupedAgentsList"
+                                            :key="agent.id"
+                                            class="topology-agent-node"
+                                            :class="getAgentNodeClass(agent)"
+                                        >
+                                            <div class="topo-agent-name">
+                                                <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
+                                                {{ agent.name }}
+                                            </div>
+                                            <div class="topo-agent-url">{{ agent.url }}</div>
+                                            <div class="topo-agent-badges">
+                                                <span class="topo-badge topo-badge-rules">
+                                                    📋 {{ getRulesCount(agent.name) }} rules
+                                                </span>
+                                                <span class="topo-badge topo-badge-servers">
+                                                    🖥️ {{ getServersCount(agent.name) }} servers
+                                                </span>
+                                            </div>
+                                            <!-- Rules list if any -->
+                                            <div v-if="getRulesCount(agent.name) > 0" class="topo-rules-list">
+                                                <div
+                                                    v-for="rule in getAgentRules(agent.name).slice(0, 5)"
+                                                    :key="rule.id"
+                                                    class="topo-rule-chip"
+                                                    :title="rule.rule + ' → ' + rule.action"
+                                                >
+                                                    <span class="topo-rule-name">{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</span>
+                                                </div>
+                                                <div v-if="getRulesCount(agent.name) > 5" class="topo-rule-chip topo-rule-more">
+                                                    +{{ getRulesCount(agent.name) - 5 }} more
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Group columns -->
+                            <div
+                                v-for="group in groups"
+                                :key="group.id"
+                                class="topology-group-col"
+                            >
+                                <div class="topology-group-box">
+                                    <div class="topology-group-label">
+                                        <span class="topo-icon">👥</span> {{ group.name }}
+                                        <span class="topo-group-desc" v-if="group.description">— {{ group.description }}</span>
+                                    </div>
+                                    <div class="topology-agents-list">
+                                        <div v-if="getGroupAgents(group.id).length === 0" class="topo-empty">
+                                            No agents in this group
+                                        </div>
+                                        <div
+                                            v-for="agent in getGroupAgents(group.id)"
+                                            :key="agent.id"
+                                            class="topology-agent-node"
+                                            :class="getAgentNodeClass(agent)"
+                                        >
+                                            <div class="topo-agent-name">
+                                                <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
+                                                {{ agent.name }}
+                                            </div>
+                                            <div class="topo-agent-url">{{ agent.url }}</div>
+                                            <div class="topo-agent-badges">
+                                                <span class="topo-badge topo-badge-rules">
+                                                    📋 {{ getRulesCount(agent.name) }} rules
+                                                </span>
+                                                <span class="topo-badge topo-badge-servers">
+                                                    🖥️ {{ getServersCount(agent.name) }} servers
+                                                </span>
+                                            </div>
+                                            <!-- Rules list if any -->
+                                            <div v-if="getRulesCount(agent.name) > 0" class="topo-rules-list">
+                                                <div
+                                                    v-for="rule in getAgentRules(agent.name).slice(0, 5)"
+                                                    :key="rule.id"
+                                                    class="topo-rule-chip"
+                                                    :title="rule.rule + ' → ' + rule.action"
+                                                >
+                                                <!-- <span v-if="rule.has_synced === 1" class="badge badge-synced"><a :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span> -->
+
+                                                    <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
+                                                </div>
+                                                <div v-if="getRulesCount(agent.name) > 5" class="topo-rule-chip topo-rule-more">
+                                                    +{{ getRulesCount(agent.name) - 5 }} more
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- DynBlock Rules for this group -->
+                                    <div v-if="getGroupDynblockRules(group.id).length > 0" class="topo-dynblock-section">
+                                        <div class="topo-dynblock-label">🛡️ DynBlock Rules</div>
+                                        <div class="topo-dynblock-list">
+                                            <div
+                                                v-for="dr in getGroupDynblockRules(group.id)"
+                                                :key="dr.id"
+                                                class="topo-dynblock-chip"
+                                                :class="{ 'topo-dynblock-inactive': !dr.is_active }"
+                                                :title="dr.rule_command"
+                                            >
+                                            <a style="color: coral;" :href="'/dynblock-rules/' +  dr.rule_uuid" > {{ dr.name || dr.rule_uuid }}</a>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Per-Agent Detail Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h5>📊 Agent Details</h5>
+                </div>
+                <div class="card-body" style="padding: 0.5rem;">
+                    <div v-if="agents.length === 0" class="alert alert-info">No agents found.</div>
+                    <div v-else style="overflow-x: auto;">
+                        <table class="rules-table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Agent</th>
+                                    <th>Group</th>
+                                    <th>Status</th>
+                                    <th>Version</th>
+                                    <th>Rules</th>
+                                    <th>Servers</th>
+                                    <th>Last Sync</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="agent in agents" :key="agent.id">
+                                    <td>
+                                        <a :href="'/agents/' + agent.id" style="font-weight:600;">{{ agent.name }}</a>
+                                        <div style="font-size:0.78rem; color:#888;">{{ agent.url }}</div>
+                                    </td>
+                                    <td>
+                                        <span v-if="agent.group_name" class="badge badge-group">{{ agent.group_name }}</span>
+                                        <span v-else class="badge badge-secondary">—</span>
+                                    </td>
+                                    <td>
+                                        <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
+                                        <span class="badge" :class="agent.status === 'online' ? 'badge-success' : 'badge-secondary'">
+                                            {{ agent.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span v-if="agent.version && agent.version !== '0'" class="badge badge-info">v{{ agent.version }}</span>
+                                        <span v-else>—</span>
+                                    </td>
+                                    <td>{{ getRulesCount(agent.name) }}</td>
+                                    <td>{{ getServersCount(agent.name) }}</td>
+                                    <td style="font-size:0.8rem; color:#888;">{{ agent.service_time }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+{% endraw %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+</body>
+</html>

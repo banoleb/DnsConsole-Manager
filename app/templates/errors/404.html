@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+{% raw %}
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar">
+            {% endraw %}
+            {% include 'components/navbar.html' %}
+            {% raw %}
+        </nav>
+    </div>
+    <div class="container">
+        <h3>
+            Oops! Page not found.
+        </h3>
+        <p>
+            The page you requested could not be found.
+
+        </p>
+    </div>
+
+{% endraw %}
+<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+</body>
+</html>

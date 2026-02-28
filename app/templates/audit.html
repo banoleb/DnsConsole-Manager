@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+{% raw %}
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar">
+            {% endraw %}
+            {% include 'components/navbar.html' %}
+            {% raw %}
+        </nav>
+    </div>
+    <div id="app">
+        <!-- Main Container -->
+        <div class="container">
+            <h2>Audit Logs</h2>
+            <p class="text-muted mb-4">View all system actions including agent management, rule changes, and broadcast commands</p>
+
+            <!-- Audit Logs Table -->
+            <div class="card">
+                <div class="card-header primary" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h6>Audit History</h6>
+                    <button
+                        class="btn btn-danger btn-sm"
+                        @click="clearOldLogs"
+                        :disabled="clearing"
+                        title="Delete audit logs older than 3 days"
+                    >
+                        {{ clearing ? 'Clearing...' : 'Clear Old Logs (3+ days)' }}
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div v-if="loading" class="text-center">
+                        <p>Loading audit logs...</p>
+                    </div>
+                    <div v-else-if="auditLogs.length === 0" class="text-center">
+                        <p class="text-muted">No audit logs found</p>
+                    </div>
+                    <div v-else>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>IP Address</th>
+                                        <th>Action</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="log in auditLogs" :key="log.id">
+                                        <td>{{ formatDateTime(log.created_at) }}</td>
+                                        <td>{{ log.ip_address }}</td>
+                                        <td><strong>{{ log.action }}</strong></td>
+                                        <td>{{ log.details || '-' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <div class="pagination-container" v-if="pagination.total_pages > 1">
+                            <button
+                                class="btn btn-sm"
+                                @click="loadPage(1)"
+                                :disabled="pagination.page === 1"
+                            >
+                                First
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="loadPage(pagination.page - 1)"
+                                :disabled="!pagination.has_prev"
+                            >
+                                Previous
+                            </button>
+                            <span class="pagination-info">
+                                Page {{ pagination.page }} of {{ pagination.total_pages }}
+                                ({{ pagination.total_count }} total records)
+                            </span>
+                            <button
+                                class="btn btn-sm"
+                                @click="loadPage(pagination.page + 1)"
+                                :disabled="!pagination.has_next"
+                            >
+                                Next
+                            </button>
+                            <button
+                                class="btn btn-sm"
+                                @click="loadPage(pagination.total_pages)"
+                                :disabled="pagination.page === pagination.total_pages"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endraw %}
+<script src="{{ url_for('static', filename='js/audit.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+</body>
+</html>

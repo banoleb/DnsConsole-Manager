@@ -1,0 +1,52 @@
+# Git files
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Database files (will be mounted as volume)
+*.db
+data/
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Test files
+test-*.sh
+test_*.html
+example-*.py
+
+# Alembic (not needed for basic console operation)
+alembic/
+alembic.ini
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Other Python utilities (not needed in container)
+token-generate.py
+
+# Config examples
+example-dnsdist.conf
+webapi.lua

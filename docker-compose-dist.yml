@@ -1,0 +1,15 @@
+---
+
+version: '3.3'
+services:
+  dnsdist:
+    container_name: dist-unit
+    image: powerdns/dnsdist-19:latest
+    restart: unless-stopped
+    user: root
+    cap_add:
+      - CAP_SYS_ADMIN
+    network_mode: host
+    privileged: true
+    volumes:
+      - ./dnsdist.conf:/etc/dnsdist/dnsdist.conf

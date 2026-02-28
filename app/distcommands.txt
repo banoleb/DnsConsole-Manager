@@ -1,0 +1,330 @@
+addACL(netmask): add to the ACL set who can use this server
+addAction(DNS rule, DNS action [, {uuid="UUID", name="name"}]): add a rule
+addBPFFilterDynBlocks(addresses, dynbpf[[, seconds=10], msg]): This is the eBPF equivalent of addDynBlocks(), blocking a set of addresses for (optionally) a number of seconds, using an eBPF dynamic filter
+addCapabilitiesToRetain(capability or list of capabilities): Linux capabilities to retain after startup, like CAP_BPF
+addConsoleACL(netmask): add a netmask to the console ACL
+addDNSCryptBind("127.0.0.1:8443", "provider name", "/path/to/resolver.cert", "/path/to/resolver.key", {reusePort=false, tcpFastOpenQueueSize=0, interface="", cpus={}}): listen to incoming DNSCrypt queries on 127.0.0.1 port 8443, with a provider name of `provider name`, using a resolver certificate and associated key stored respectively in the `resolver.cert` and `resolver.key` files. The fifth optional parameter is a table of parameters
+addDOHLocal(addr, certFile, keyFile [, urls [, vars]]): listen to incoming DNS over HTTPS queries on the specified address using the specified certificate and key. The last two parameters are tables
+addDynBlocks(addresses, message[, seconds[, action]]): block the set of addresses with message `msg`, for `seconds` seconds (10 by default), applying `action` (default to the one set with `setDynBlocksAction()`)
+addDynBlockSMT(names, message[, seconds [, action]]): block the set of names with message `msg`, for `seconds` seconds (10 by default), applying `action` (default to the one set with `setDynBlocksAction()`)
+addLocal(addr [, {doTCP=true, reusePort=false, tcpFastOpenQueueSize=0, interface="", cpus={}}]): add `addr` to the list of addresses we listen on
+addCacheHitResponseAction(DNS rule, DNS response action [, {uuid="UUID", name="name"}}]): add a cache hit response rule
+addCacheInsertedResponseAction(DNS rule, DNS response action [, {uuid="UUID", name="name"}}]): add a cache inserted response rule
+addResponseAction(DNS rule, DNS response action [, {uuid="UUID", name="name"}}]): add a response rule
+addSelfAnsweredResponseAction(DNS rule, DNS response action [, {uuid="UUID", name="name"}}]): add a self-answered response rule
+addTLSLocal(addr, certFile(s), keyFile(s) [,params]): listen to incoming DNS over TLS queries on the specified address using the specified certificate (or list of) and key (or list of). The last parameter is a table
+AllowAction(): let these packets go through
+AllowResponseAction(): let these packets go through
+AllRule(): matches all traffic
+AndRule(list of DNS rules): matches if all sub-rules matches
+benchRule(DNS Rule [, iterations [, suffix]]): bench the specified DNS rule
+carbonServer(serverIP, [ourname], [interval]): report statistics to serverIP using our hostname, or 'ourname' if provided, every 'interval' seconds
+clearConsoleHistory(): clear the internal (in-memory) history of console commands
+clearDynBlocks(): clear all dynamic blocks
+clearQueryCounters(): clears the query counter buffer
+clearRules(): remove all current rules
+controlSocket(addr): open a control socket on this address / connect to this address in client mode
+ContinueAction(action): execute the specified action and continue the processing of the remaining rules, regardless of the return of the action
+declareMetric(name, type, description [, prometheusName]): Declare a custom metric
+decMetric(name): Decrement a custom metric
+DelayAction(milliseconds): delay the response by the specified amount of milliseconds (UDP-only)
+DelayResponseAction(milliseconds): delay the response by the specified amount of milliseconds (UDP-only)
+delta(): shows all commands entered that changed the configuration
+DNSSECRule(): matches queries with the DO bit set
+DnstapLogAction(identity, FrameStreamLogger [, alterFunction]): send the contents of this query to a FrameStreamLogger or RemoteLogger as dnstap. `alterFunction` is a callback, receiving a DNSQuestion and a DnstapMessage, that can be used to modify the dnstap message
+DnstapLogResponseAction(identity, FrameStreamLogger [, alterFunction]): send the contents of this response to a remote or FrameStreamLogger or RemoteLogger as dnstap. `alterFunction` is a callback, receiving a DNSResponse and a DnstapMessage, that can be used to modify the dnstap message
+DropAction(): drop these packets
+DropResponseAction(): drop these packets
+DSTPortRule(port): matches questions received to the destination port specified
+dumpStats(): print all statistics we gather
+dynBlockRulesGroup(): return a new DynBlockRulesGroup object
+EDNSVersionRule(version): matches queries with the specified EDNS version
+EDNSOptionRule(optcode): matches queries with the specified EDNS0 option present
+ERCodeAction(ercode): Reply immediately by turning the query into a response with the specified EDNS extended rcode
+ERCodeRule(rcode): matches responses with the specified extended rcode (EDNS0)
+exceedNXDOMAINs(rate, seconds): get set of addresses that exceed `rate` NXDOMAIN/s over `seconds` seconds
+exceedQRate(rate, seconds): get set of address that exceed `rate` queries/s over `seconds` seconds
+exceedQTypeRate(type, rate, seconds): get set of address that exceed `rate` queries/s for queries of type `type` over `seconds` seconds
+exceedRespByterate(rate, seconds): get set of addresses that exceeded `rate` bytes/s answers over `seconds` seconds
+exceedServFails(rate, seconds): get set of addresses that exceed `rate` servfails/s over `seconds` seconds
+firstAvailable: picks the server with the lowest `order` that has not exceeded its QPS limit
+fixupCase(bool): if set (default to no), rewrite the first qname of the question part of the answer to match the one from the query. It is only useful when you have a downstream server that messes up the case of the question qname in the answer
+generateDNSCryptCertificate("/path/to/providerPrivate.key", "/path/to/resolver.cert", "/path/to/resolver.key", serial, validFrom, validUntil): generate a new resolver private key and related certificate, valid from the `validFrom` timestamp until the `validUntil` one, signed with the provider private key
+generateDNSCryptProviderKeys("/path/to/providerPublic.key", "/path/to/providerPrivate.key"): generate a new provider keypair
+getAction(n): Returns the Action associated with rule n
+getBind(n): returns the listener at index n
+getBindCount(): returns the number of listeners all kinds
+getCurrentTime(): returns the current time
+getDNSCryptBind(n): return the `DNSCryptContext` object corresponding to the bind `n`
+getDNSCryptBindCount(): returns the number of DNSCrypt listeners
+getDOHFrontend(n): returns the DOH frontend with index n
+getDOHFrontendCount(): returns the number of DoH listeners
+getListOfAddressesOfNetworkInterface(itf): returns the list of addresses configured on a given network interface, as strings
+getListOfNetworkInterfaces(): returns the list of network interfaces present on the system, as strings
+getListOfRangesOfNetworkInterface(itf): returns the list of network ranges configured on a given network interface, as strings
+getMACAddress(IP addr): return the link-level address (MAC) corresponding to the supplied neighbour  IP address, if known by the kernel
+getMetric(name): Get the value of a custom metric
+getOutgoingTLSSessionCacheSize(): returns the number of TLS sessions (for outgoing connections) currently cached
+getPool(name): return the pool named `name`, or "" for the default pool
+getPoolServers(pool): return servers part of this pool
+getPoolNames(): returns a table with all the pool names
+getQueryCounters([max=10]): show current buffer of query counters, limited by 'max' if provided
+getResponseRing(): return the current content of the response ring
+getRespRing(): return the qname/rcode content of the response ring
+getServer(id): returns server with index 'n' or whose uuid matches if 'id' is an UUID string
+getServers(): returns a table with all defined servers
+getStatisticsCounters(): returns a map of statistic counters
+getTopCacheHitResponseRules([top]): return the `top` cache-hit response rules
+getTopCacheInsertedResponseRules([top]): return the `top` cache-inserted response rules
+getTopResponseRules([top]): return the `top` response rules
+getTopRules([top]): return the `top` rules
+getTopSelfAnsweredResponseRules([top]): return the `top` self-answered response rules
+getTLSContext(n): returns the TLS context with index n
+getTLSFrontend(n): returns the TLS frontend with index n
+getTLSFrontendCount(): returns the number of DoT listeners
+getVerbose(): get whether log messages at the verbose level will be logged
+grepq(Netmask|DNS Name|100ms|{"::1", "powerdns.com", "100ms"} [, n]): shows the last n queries and responses matching the specified client address or range (Netmask), or the specified DNS Name, or slower than 100ms
+hashPassword(password [, workFactor]): Returns a hashed and salted version of the supplied password, usable with 'setWebserverConfig()'
+HTTPHeaderRule(name, regex): matches DoH queries with a HTTP header 'name' whose content matches the regular expression 'regex'
+HTTPPathRegexRule(regex): matches DoH queries whose HTTP path matches 'regex'
+HTTPPathRule(path): matches DoH queries whose HTTP path is an exact match to 'path'
+HTTPStatusAction(status, reason, body): return an HTTP response
+inClientStartup(): returns true during console client parsing of configuration
+includeDirectory(path): include configuration files from `path`
+incMetric(name): Increment a custom metric
+KeyValueLookupKeyQName([wireFormat]): Return a new KeyValueLookupKey object that, when passed to KeyValueStoreLookupAction or KeyValueStoreLookupRule, will return the qname of the query, either in wire format (default) or in plain text if 'wireFormat' is false
+KeyValueLookupKeySourceIP([v4Mask [, v6Mask [, includePort]]]): Return a new KeyValueLookupKey object that, when passed to KeyValueStoreLookupAction or KeyValueStoreLookupRule, will return the (possibly bitmasked) source IP of the client in network byte-order.
+KeyValueLookupKeySuffix([minLabels [,wireFormat]]): Return a new KeyValueLookupKey object that, when passed to KeyValueStoreLookupAction or KeyValueStoreLookupRule, will return a vector of keys based on the labels of the qname in DNS wire format or plain text
+KeyValueLookupKeyTag(tag): Return a new KeyValueLookupKey object that, when passed to KeyValueStoreLookupAction or KeyValueStoreLookupRule, will return the value of the corresponding tag for this query, if it exists
+KeyValueStoreLookupAction(kvs, lookupKey, destinationTag): does a lookup into the key value store referenced by 'kvs' using the key returned by 'lookupKey', and storing the result if any into the tag named 'destinationTag'
+KeyValueStoreRangeLookupAction(kvs, lookupKey, destinationTag): does a range-based lookup into the key value store referenced by 'kvs' using the key returned by 'lookupKey', and storing the result if any into the tag named 'destinationTag'
+KeyValueStoreLookupRule(kvs, lookupKey): matches queries if the key is found in the specified Key Value store
+KeyValueStoreRangeLookupRule(kvs, lookupKey): matches queries if the key is found in the specified Key Value store
+leastOutstanding: Send traffic to downstream server with least outstanding queries, with the lowest 'order', and within that the lowest recent latency
+loadTLSEngine(engineName [, defaultString]): Load the OpenSSL engine named 'engineName', setting the engine default string to 'defaultString' if supplied
+LogAction([filename], [binary], [append], [buffered]): Log a line for each query, to the specified file if any, to the console (require verbose) otherwise. When logging to a file, the `binary` optional parameter specifies whether we log in binary form (default) or in textual form, the `append` optional parameter specifies whether we open the file for appending or truncate each time (default), and the `buffered` optional parameter specifies whether writes to the file are buffered (default) or not.
+LogResponseAction([filename], [append], [buffered]): Log a line for each response, to the specified file if any, to the console (require verbose) otherwise. The `append` optional parameter specifies whether we open the file for appending or truncate each time (default), and the `buffered` optional parameter specifies whether writes to the file are buffered (default) or not.
+LuaAction(function): Invoke a Lua function that accepts a DNSQuestion
+LuaFFIAction(function): Invoke a Lua FFI function that accepts a DNSQuestion
+LuaFFIPerThreadAction(function): Invoke a Lua FFI function that accepts a DNSQuestion, with a per-thread Lua context
+LuaFFIPerThreadResponseAction(function): Invoke a Lua FFI function that accepts a DNSResponse, with a per-thread Lua context
+LuaFFIResponseAction(function): Invoke a Lua FFI function that accepts a DNSResponse
+LuaFFIRule(function): Invoke a Lua FFI function that filters DNS questions
+LuaResponseAction(function): Invoke a Lua function that accepts a DNSResponse
+LuaRule(function): Invoke a Lua function that filters DNS questions
+makeIPCipherKey(password): generates a 16-byte key that can be used to pseudonymize IP addresses with IP cipher
+makeKey(): generate a new server access key, emit configuration line ready for pasting
+makeRule(rule): Make a NetmaskGroupRule() or a SuffixMatchNodeRule(), depending on how it is called
+MaxQPSIPRule(qps, [v4Mask=32 [, v6Mask=64 [, burst=qps [, expiration=300 [, cleanupDelay=60 [, scanFraction=10 [, shards=10]]]]]]]): matches traffic exceeding the qps limit per subnet
+MaxQPSRule(qps): matches traffic **not** exceeding this qps limit
+mvCacheHitResponseRule(from, to): move cache hit response rule 'from' to a position where it is in front of 'to'. 'to' can be one larger than the largest rule
+mvCacheHitResponseRuleToTop(): move the last cache hit response rule to the first position
+mvCacheInsertedResponseRule(from, to): move cache inserted response rule 'from' to a position where it is in front of 'to'. 'to' can be one larger than the largest rule
+mvCacheInsertedResponseRuleToTop(): move the last cache inserted response rule to the first position
+mvResponseRule(from, to): move response rule 'from' to a position where it is in front of 'to'. 'to' can be one larger than the largest rule
+mvResponseRuleToTop(): move the last response rule to the first position
+mvRule(from, to): move rule 'from' to a position where it is in front of 'to'. 'to' can be one larger than the largest rule, in which case the rule will be moved to the last position
+mvRuleToTop(): move the last rule to the first position
+mvSelfAnsweredResponseRule(from, to): move self-answered response rule 'from' to a position where it is in front of 'to'. 'to' can be one larger than the largest rule
+mvSelfAnsweredResponseRuleToTop(): move the last self-answered response rule to the first position
+NetmaskGroupRule(nmg[, src]): Matches traffic from/to the network range specified in nmg. Set the src parameter to false to match nmg against destination address instead of source address. This can be used to differentiate between clients
+newBPFFilter({ipv4MaxItems=int, ipv4PinnedPath=string, ipv6MaxItems=int, ipv6PinnedPath=string, cidr4MaxItems=int, cidr4PinnedPath=string, cidr6MaxItems=int, cidr6PinnedPath=string, qnamesMaxItems=int, qnamesPinnedPath=string, external=bool}): Return a new eBPF socket filter with specified options.
+newCA(address): Returns a ComboAddress based on `address`
+newDNSName(name): make a DNSName based on this .-terminated name
+newDNSNameSet(): returns a new DNSNameSet
+newDynBPFFilter(bpf): Return a new dynamic eBPF filter associated to a given BPF Filter
+newFrameStreamTcpLogger(addr [, options]): create a FrameStream logger object writing to a TCP address (addr should be ip:port), to use with `DnstapLogAction()` and `DnstapLogResponseAction()`
+newFrameStreamUnixLogger(socket [, options]): create a FrameStream logger object writing to a local unix socket, to use with `DnstapLogAction()` and `DnstapLogResponseAction()`
+newLMDBKVStore(fname, dbName [, noLock]): Return a new KeyValueStore object associated to the corresponding LMDB database
+newNMG(): Returns a NetmaskGroup
+newPacketCache(maxEntries[, maxTTL=86400, minTTL=0, temporaryFailureTTL=60, staleTTL=60, dontAge=false, numberOfShards=1, deferrableInsertLock=true, options={}]): return a new Packet Cache
+newQPSLimiter(rate, burst): configure a QPS limiter with that rate and that burst capacity
+newRemoteLogger(address:port [, timeout=2, maxQueuedEntries=100, reconnectWaitTime=1]): create a Remote Logger object, to use with `RemoteLogAction()` and `RemoteLogResponseAction()`
+newRuleAction(DNS rule, DNS action [, {uuid="UUID", name="name"}]): return a pair of DNS Rule and DNS Action, to be used with `setRules()`
+newServer({address="ip:port", qps=1000, order=1, weight=10, pool="abuse", retries=5, tcpConnectTimeout=5, tcpSendTimeout=30, tcpRecvTimeout=30, checkName="a.root-servers.net.", checkType="A", maxCheckFailures=1, mustResolve=false, useClientSubnet=true, source="address|interface name|address@interface", sockets=1, reconnectOnUp=false}): instantiate a server
+newServerPolicy(name, function): create a policy object from a Lua function
+newSuffixMatchNode(): returns a new SuffixMatchNode
+newSVCRecordParameters(priority, target, mandatoryParams, alpns, noDefaultAlpn [, port [, ech [, ipv4hints [, ipv6hints [, additionalParameters ]]]]]): return a new SVCRecordParameters object, to use with SpoofSVCAction
+NegativeAndSOAAction(nxd, zone, ttl, mname, rname, serial, refresh, retry, expire, minimum [, options]): Turn a query into a NXDomain or NoData answer and sets a SOA record in the additional section
+NoneAction(): Does nothing. Subsequent rules are processed after this action
+NotRule(selector): Matches the traffic if the selector rule does not match
+OpcodeRule(code): Matches queries with opcode code. code can be directly specified as an integer, or one of the built-in DNSOpcodes
+OrRule(selectors): Matches the traffic if one or more of the the selectors rules does match
+PoolAction(poolname [, stop]): set the packet into the specified pool
+PoolAvailableRule(poolname): Check whether a pool has any servers available to handle queries
+PoolOutstandingRule(poolname, limit): Check whether a pool has outstanding queries above limit
+printDNSCryptProviderFingerprint("/path/to/providerPublic.key"): display the fingerprint of the provided resolver public key
+ProbaRule(probability): Matches queries with a given probability. 1.0 means always
+ProxyProtocolValueRule(type [, value]): matches queries with a specified Proxy Protocol TLV value of that type, optionally matching the content of the option as well
+QClassRule(qclass): Matches queries with the specified qclass. class can be specified as an integer or as one of the built-in DNSClass
+QNameLabelsCountRule(min, max): matches if the qname has less than `min` or more than `max` labels
+QNameRule(qname): matches queries with the specified qname
+QNameSetRule(set): Matches if the set contains exact qname
+QNameWireLengthRule(min, max): matches if the qname's length on the wire is less than `min` or more than `max` bytes
+QPSAction(maxqps): Drop a packet if it does exceed the maxqps queries per second limits. Letting the subsequent rules apply otherwise
+QPSPoolAction(maxqps, poolname [, stop]): Send the packet into the specified pool only if it does not exceed the maxqps queries per second limits. Letting the subsequent rules apply otherwise
+QTypeRule(qtype): matches queries with the specified qtype
+RCodeAction(rcode): Reply immediately by turning the query into a response with the specified rcode
+RCodeRule(rcode): matches responses with the specified rcode
+RDRule(): Matches queries with the RD flag set
+RecordsCountRule(section, minCount, maxCount): Matches if there is at least minCount and at most maxCount records in the section section. section can be specified as an integer or as a DNS Packet Sections
+RecordsTypeCountRule(section, qtype, minCount, maxCount): Matches if there is at least minCount and at most maxCount records of type type in the section section
+RegexRule(regex): matches the query name against the supplied regex
+registerDynBPFFilter(DynBPFFilter): register this dynamic BPF filter into the web interface so that its counters are displayed
+reloadAllCertificates(): reload all DNSCrypt and TLS certificates, along with their associated keys
+RemoteLogAction(RemoteLogger [, alterFunction [, serverID]]): send the content of this query to a remote logger via Protocol Buffer. `alterFunction` is a callback, receiving a DNSQuestion and a DNSDistProtoBufMessage, that can be used to modify the Protocol Buffer content, for example for anonymization purposes. `serverID` is the server identifier.
+RemoteLogResponseAction(RemoteLogger [,alterFunction [,includeCNAME [, serverID]]]): send the content of this response to a remote logger via Protocol Buffer. `alterFunction` is the same callback than the one in `RemoteLogAction` and `includeCNAME` indicates whether CNAME records inside the response should be parsed and exported. The default is to only exports A and AAAA records. `serverID` is the server identifier.
+requestTCPStatesDump(): Request a dump of the TCP states (incoming connections, outgoing connections) during the next scan. Useful for debugging purposes only
+rmACL(netmask): remove netmask from ACL
+rmCacheHitResponseRule(id): remove cache hit response rule in position 'id', or whose uuid matches if 'id' is an UUID string, or finally whose name matches if 'id' is a string but not a valid UUID
+rmCacheInsertedResponseRule(id): remove cache inserted response rule in position 'id', or whose uuid matches if 'id' is an UUID string, or finally whose name matches if 'id' is a string but not a valid UUID
+rmResponseRule(id): remove response rule in position 'id', or whose uuid matches if 'id' is an UUID string, or finally whose name matches if 'id' is a string but not a valid UUID
+rmRule(id): remove rule in position 'id', or whose uuid matches if 'id' is an UUID string, or finally whose name matches if 'id' is a string but not a valid UUID
+rmSelfAnsweredResponseRule(id): remove self-answered response rule in position 'id', or whose uuid matches if 'id' is an UUID string, or finally whose name matches if 'id' is a string but not a valid UUID
+rmServer(id): remove server with index 'id' or whose uuid matches if 'id' is an UUID string
+roundrobin: Simple round robin over available servers
+sendCustomTrap(str): send a custom `SNMP` trap from Lua, containing the `str` string
+setACL({netmask, netmask}): replace the ACL set with these netmasks. Use `setACL({})` to reset the list, meaning no one can use us
+setACLFromFile(file): replace the ACL set with netmasks in this file
+setAddEDNSToSelfGeneratedResponses(add): set whether to add EDNS to self-generated responses, provided that the initial query had EDNS
+setAllowEmptyResponse(allow): Set to true (defaults to false) to allow empty responses (qdcount=0) with a NoError or NXDomain rcode (default) from backends
+setAPIWritable(bool, dir): allow modifications via the API. if `dir` is set, it must be a valid directory where the configuration files will be written by the API
+setCacheCleaningDelay(num): Set the interval in seconds between two runs of the cache cleaning algorithm, removing expired entries
+setCacheCleaningPercentage(num): Set the percentage of the cache that the cache cleaning algorithm will try to free by removing expired entries. By default (100), all expired entries are remove
+setConsistentHashingBalancingFactor(factor): Set the balancing factor for bounded-load consistent hashing
+setConsoleACL({netmask, netmask}): replace the console ACL set with these netmasks
+setConsoleConnectionsLogging(enabled): whether to log the opening and closing of console connections
+setConsoleMaximumConcurrentConnections(max): Set the maximum number of concurrent console connections
+setConsoleOutputMaxMsgSize(messageSize): set console message maximum size in bytes, default is 10 MB
+setDefaultBPFFilter(filter): When used at configuration time, the corresponding BPFFilter will be attached to every bind
+setDoHDownstreamCleanupInterval(interval): minimum interval in seconds between two cleanups of the idle DoH downstream connections
+setDoHDownstreamMaxIdleTime(time): Maximum time in seconds that a downstream DoH connection to a backend might stay idle
+setDynBlocksAction(action): set which action is performed when a query is blocked. Only DNSAction.Drop (the default) and DNSAction.Refused are supported
+setDynBlocksPurgeInterval(sec): set how often the expired dynamic block entries should be removed
+setDropEmptyQueries(drop): Whether to drop empty queries right away instead of sending a NOTIMP response
+setECSOverride(bool): whether to override an existing EDNS Client Subnet value in the query
+setECSSourcePrefixV4(prefix-length): the EDNS Client Subnet prefix-length used for IPv4 queries
+setECSSourcePrefixV6(prefix-length): the EDNS Client Subnet prefix-length used for IPv6 queries
+setKey(key): set access key to that key
+setLocal(addr [, {doTCP=true, reusePort=false, tcpFastOpenQueueSize=0, interface="", cpus={}}]): reset the list of addresses we listen on to this address
+setMaxCachedDoHConnectionsPerDownstream(max): Set the maximum number of inactive DoH connections to a backend cached by each worker DoH thread
+setMaxCachedTCPConnectionsPerDownstream(max): Set the maximum number of inactive TCP connections to a backend cached by each worker TCP thread
+setMaxTCPClientThreads(n): set the maximum of TCP client threads, handling TCP connections
+setMaxTCPConnectionDuration(n): set the maximum duration of an incoming TCP connection, in seconds. 0 means unlimited
+setMaxTCPConnectionsPerClient(n): set the maximum number of TCP connections per client. 0 means unlimited
+setMaxTCPQueriesPerConnection(n): set the maximum number of queries in an incoming TCP connection. 0 means unlimited
+setMaxTCPQueuedConnections(n): set the maximum number of TCP connections queued (waiting to be picked up by a client thread)
+setMaxUDPOutstanding(n): set the maximum number of outstanding UDP queries to a given backend server. This can only be set at configuration time and defaults to 65535
+setMetric(name, value): Set the value of a custom metric to the supplied value
+setPayloadSizeOnSelfGeneratedAnswers(payloadSize): set the UDP payload size advertised via EDNS on self-generated responses
+setPoolServerPolicy(policy, pool): set the server selection policy for this pool to that policy
+setPoolServerPolicyLua(name, function, pool): set the server selection policy for this pool to one named 'name' and provided by 'function'
+setPoolServerPolicyLuaFFI(name, function, pool): set the server selection policy for this pool to one named 'name' and provided by 'function'
+setPoolServerPolicyLuaFFIPerThread(name, code): set server selection policy for this pool to one named 'name' and returned by the Lua FFI code passed in 'code'
+setProxyProtocolACL({netmask, netmask}): Set the netmasks who are allowed to send Proxy Protocol headers in front of queries/connections
+setProxyProtocolApplyACLToProxiedClients(apply): Whether the general ACL should be applied to the source IP address gathered from a Proxy Protocol header, in addition to being first applied to the source address seen by dnsdist
+setProxyProtocolMaximumPayloadSize(max): Set the maximum size of a Proxy Protocol payload, in bytes
+setQueryCount(bool): set whether queries should be counted
+setQueryCountFilter(func): filter queries that would be counted, where `func` is a function with parameter `dq` which decides whether a query should and how it should be counted
+SetReducedTTLResponseAction(percentage): Reduce the TTL of records in a response to a given percentage
+setRingBuffersLockRetries(n): set the number of attempts to get a non-blocking lock to a ringbuffer shard before blocking
+setRingBuffersOptions({ lockRetries=int, recordQueries=true, recordResponses=true }): set ringbuffer options
+setRingBuffersSize(n [, numberOfShards]): set the capacity of the ringbuffers used for live traffic inspection to `n`, and optionally the number of shards to use to `numberOfShards`
+setRoundRobinFailOnNoServer(value): By default the roundrobin load-balancing policy will still try to select a backend even if all backends are currently down. Setting this to true will make the policy fail and return that no server is available instead
+setRules(list of rules): replace the current rules with the supplied list of pairs of DNS Rules and DNS Actions (see `newRuleAction()`)
+setSecurityPollInterval(n): set the security polling interval to `n` seconds
+setSecurityPollSuffix(suffix): set the security polling suffix to the specified value
+setServerPolicy(policy): set server selection policy to that policy
+setServerPolicyLua(name, function): set server selection policy to one named 'name' and provided by 'function'
+setServerPolicyLuaFFI(name, function): set server selection policy to one named 'name' and provided by the Lua FFI 'function'
+setServerPolicyLuaFFIPerThread(name, code): set server selection policy to one named 'name' and returned by the Lua FFI code passed in 'code'
+setServFailWhenNoServer(bool): if set, return a ServFail when no servers are available, instead of the default behaviour of dropping the query
+setStaleCacheEntriesTTL(n): allows using cache entries expired for at most n seconds when there is no backend available to answer for a query
+setSyslogFacility(facility): set the syslog logging facility to 'facility'. Defaults to LOG_DAEMON
+setTCPDownstreamCleanupInterval(interval): minimum interval in seconds between two cleanups of the idle TCP downstream connections
+setTCPFastOpenKey(string): TCP Fast Open Key
+setTCPDownstreamMaxIdleTime(time): Maximum time in seconds that a downstream TCP connection to a backend might stay idle
+setTCPInternalPipeBufferSize(size): Set the size in bytes of the internal buffer of the pipes used internally to distribute connections to TCP (and DoT) workers threads
+setTCPRecvTimeout(n): set the read timeout on TCP connections from the client, in seconds
+setTCPSendTimeout(n): set the write timeout on TCP connections from the client, in seconds
+setUDPMultipleMessagesVectorSize(n): set the size of the vector passed to recvmmsg() to receive UDP messages. Default to 1 which means that the feature is disabled and recvmsg() is used instead
+setUDPSocketBufferSizes(recv, send): Set the size of the receive (SO_RCVBUF) and send (SO_SNDBUF) buffers for incoming UDP sockets
+setUDPTimeout(n): set the maximum time dnsdist will wait for a response from a backend over UDP, in seconds
+setVerbose(bool): set whether log messages at the verbose level will be logged
+setVerboseHealthChecks(bool): set whether health check errors will be logged
+setVerboseLogDestination(destination file): Set a destination file to write the 'verbose' log messages to, instead of sending them to syslog and/or the standard output
+setWebserverConfig([{password=string, apiKey=string, customHeaders, statsRequireAuthentication}]): Updates webserver configuration
+setWeightedBalancingFactor(factor): Set the balancing factor for bounded-load weighted policies (whashed, wrandom)
+setWHashedPertubation(value): Set the hash perturbation value to be used in the whashed policy instead of a random one, allowing to have consistent whashed results on different instance
+show(string): outputs `string`
+showACL(): show our ACL set
+showBinds(): show listening addresses (frontends)
+showCacheHitResponseRules([{showUUIDs=false, truncateRuleWidth=-1}]): show all defined cache hit response rules, optionally with their UUIDs and optionally truncated to a given width
+showConsoleACL(): show our current console ACL set
+showDNSCryptBinds(): display the currently configured DNSCrypt binds
+showDOHFrontends(): list all the available DOH frontends
+showDOHResponseCodes(): show the HTTP response code statistics for the DoH frontends
+showDynBlocks(): show dynamic blocks in force
+showPools(): show the available pools
+showPoolServerPolicy(pool): show server selection policy for this pool
+showResponseLatency(): show a plot of the response time latency distribution
+showResponseRules([{showUUIDs=false, truncateRuleWidth=-1}]): show all defined response rules, optionally with their UUIDs and optionally truncated to a given width
+showRules([{showUUIDs=false, truncateRuleWidth=-1}]): show all defined rules, optionally with their UUIDs and optionally truncated to a given width
+showSecurityStatus(): Show the security status
+showSelfAnsweredResponseRules([{showUUIDs=false, truncateRuleWidth=-1}]): show all defined self-answered response rules, optionally with their UUIDs and optionally truncated to a given width
+showServerPolicy(): show name of currently operational server selection policy
+showServers([{showUUIDs=false}]): output all servers, optionally with their UUIDs
+showTCPStats(): show some statistics regarding TCP
+showTLSContexts(): list all the available TLS contexts
+showTLSErrorCounters(): show metrics about TLS handshake failures
+showVersion(): show the current version
+showWebserverConfig(): Show the current webserver configuration
+shutdown(): shut down `dnsdist`
+snmpAgent(enableTraps [, daemonSocket]): enable `SNMP` support. `enableTraps` is a boolean indicating whether traps should be sent and `daemonSocket` an optional string specifying how to connect to the daemon agent
+SetAdditionalProxyProtocolValueAction(type, value): Add a Proxy Protocol TLV value of this type
+SetDisableECSAction(): Disable the sending of ECS to the backend. Subsequent rules are processed after this action.
+SetDisableValidationAction(): set the CD bit in the question, let it go through
+SetECSAction(v4[, v6]): Set the ECS prefix and prefix length sent to backends to an arbitrary value
+SetECSOverrideAction(override): Whether an existing EDNS Client Subnet value should be overridden (true) or not (false). Subsequent rules are processed after this action
+SetECSPrefixLengthAction(v4, v6): Set the ECS prefix length. Subsequent rules are processed after this action
+SetMacAddrAction(option): Add the source MAC address to the query as EDNS0 option option. This action is currently only supported on Linux. Subsequent rules are processed after this action
+SetEDNSOptionAction(option, data): Add arbitrary EDNS option and data to the query. Subsequent rules are processed after this action
+SetNoRecurseAction(): strip RD bit from the question, let it go through
+setOutgoingDoHWorkerThreads(n): Number of outgoing DoH worker threads
+SetProxyProtocolValuesAction(values): Set the Proxy-Protocol values for this queries to 'values'
+SetSkipCacheAction(): Don’t lookup the cache for this query, don’t store the answer
+SetSkipCacheResponseAction(): Don’t store this response into the cache
+SetTagAction(name, value): set the tag named 'name' to the given value
+SetTagResponseAction(name, value): set the tag named 'name' to the given value
+SetTempFailureCacheTTLAction(ttl): set packetcache TTL for temporary failure replies
+SNIRule(name): Create a rule which matches on the incoming TLS SNI value, if any (DoT or DoH)
+SNMPTrapAction([reason]): send an SNMP trap, adding the optional `reason` string as the query description
+SNMPTrapResponseAction([reason]): send an SNMP trap, adding the optional `reason` string as the response description
+SpoofAction(ip|list of ips [, options]): forge a response with the specified IPv4 (for an A query) or IPv6 (for an AAAA). If you specify multiple addresses, all that match the query type (A, AAAA or ANY) will get spoofed in
+SpoofCNAMEAction(cname [, options]): Forge a response with the specified CNAME value
+SpoofRawAction(raw|list of raws [, options]): Forge a response with the specified record data as raw bytes. If you specify multiple raws (it is assumed they match the query type), all will get spoofed in
+SpoofSVCAction(list of svcParams [, options]): Forge a response with the specified SVC record data
+SuffixMatchNodeRule(smn[, quiet]): Matches based on a group of domain suffixes for rapid testing of membership. Pass true as second parameter to prevent listing of all domains matched
+TagRule(name [, value]): matches if the tag named 'name' is present, with the given 'value' matching if any
+TCAction(): create answer to query with TC and RD bits set, to move to TCP
+TCPRule([tcp]): Matches question received over TCP if tcp is true, over UDP otherwise
+TeeAction(remote [, addECS [, local]]): send copy of query to remote, optionally adding ECS info, optionally set local address
+testCrypto(): test of the crypto all works
+TimedIPSetRule(): Create a rule which matches a set of IP addresses which expire
+topBandwidth(top): show top-`top` clients that consume the most bandwidth over length of ringbuffer
+topCacheHitResponseRules([top][, vars]): show `top` cache-hit response rules
+topCacheInsertedResponseRules([top][, vars]): show `top` cache-inserted response rules
+topClients(n): show top-`n` clients sending the most queries over length of ringbuffer
+topQueries(n[, labels]): show top 'n' queries, as grouped when optionally cut down to 'labels' labels
+topResponses(n, kind[, labels]): show top 'n' responses with RCODE=kind (0=NO Error, 2=ServFail, 3=NXDomain), as grouped when optionally cut down to 'labels' labels
+topResponseRules([top][, vars]): show `top` response rules
+topRules([top][, vars]): show `top` rules
+topSelfAnsweredResponseRules([top][, vars]): show `top` self-answered response rules
+topSlow([top][, limit][, labels]): show `top` queries slower than `limit` milliseconds, grouped by last `labels` labels
+TrailingDataRule(): Matches if the query has trailing data
+truncateTC(bool): if set (defaults to no starting with dnsdist 1.2.0) truncate TC=1 answers so they are actually empty. Fixes an issue for PowerDNS Authoritative Server 2.9.22. Note: turning this on breaks compatibility with RFC 6891.
+unregisterDynBPFFilter(DynBPFFilter): unregister this dynamic BPF filter
+webserver(address:port): launch a webserver with stats on that address
+whashed: Weighted hashed ('sticky') distribution over available servers, based on the server 'weight' parameter
+chashed: Consistent hashed ('sticky') distribution over available servers, also based on the server 'weight' parameter
+wrandom: Weighted random over available servers, based on the server 'weight' parameter
