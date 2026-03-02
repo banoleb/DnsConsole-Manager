@@ -1,14 +1,15 @@
 ---
 services:
   console:
-    build: .
+    image: banoleb666/dnsconsole-manager:0.0.1
+    # build: .
     container_name: dist-manager
     network_mode: host
     # ports:
     #   - "5000:5000"
-    # volumes:
-    #   # Persist database
-    #   - ./data:/data
+    volumes:
+      # Persist database (with some test data)
+      - ./app/dnsdist_webapi.db:/app/dnsdist_webapi.db
     env_file:
       - .env
     environment:

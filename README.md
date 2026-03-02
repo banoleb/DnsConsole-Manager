@@ -6,9 +6,7 @@
 😎`The project is 99 percent vibe coding and 1 percent my idea.`
 *(So, don't throw a brick at me.)*
 
-[logo1]: docs/img/main_pic_01.png "Logo Title Text 2"
-[logo2]: docs/img/main_pic_02.png "Logo Title Text 2"
-[logo3]: docs/img/main_pic_03.png "Logo Title Text 2"
+[logo3]: docs/img/master-logo2.gif "Logo Title Text 2"
 [logo4]: docs/img/main-shema.png "Logo Title Text "
 
 ## Architecture
@@ -52,9 +50,8 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 - ✅ Command autocomplete and history
 - ✅ Automatic rules synchronization to agents
 - ✅ Victoria Metrics integration for agent status, topClients, and topQueries metrics export
-2"
-![alt text][logo1]
-![alt text][logo2]
+
+
 ![alt text][logo3]
 ## Quick Start
 
@@ -91,12 +88,14 @@ pip3 install -r requirements.txt
 python3 webapi-agent.py --create_token
 
 # example
+# change: app/settings.py
 python3 webapi-agent.py --port 8080 --console-host  127.0.0.1 --console-port 5199 --key "YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk="  --webtoken DLE-GL_SNSlGqegTAsMwNhb07-r2thYmI14mD9BBa-k
 ```
 
 4. Start via docker-compose:
 
 ```bash
+# change: docker-compose-agent.yml environments
 docker compose -f docker-compose-agent.yml up -d
 ```
 
@@ -106,7 +105,7 @@ docker compose -f docker-compose-agent.yml up -d
 
 #### 1. Start the Web Console:
 
-##### edid: app/settings.py
+##### change: app/settings.py
 
 ```bash
 # use venv if needed
@@ -122,6 +121,7 @@ python3 console.py
 gunicorn --workers 4 --bind 0.0.0.0:5000 wsgi:app
 
 # or
+# change: docker-compose-console.yml environments or .env file
 docker compose -f docker-compose-console.yml build
 docker compose -f docker-compose-console.yml up -d --remove-orphans
 ```
@@ -161,4 +161,38 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
 psql -h server-psql -U psql -d psql -f db/seed_data.psql.sql
 
 # or use default db dnsdist_webapi.db in app dir
+```
+
+
+
+### Environment Variables
+
+#### Console
+
+- `WEBAPI_PORT` - Port for console web interface (default: 5000)
+- `WEBAPI_HOST` - Host to bind to (default: 0.0.0.0)
+- `DATABASE_URL` - Database connection string (default: sqlite:////data/dnsdist_webapi.db)
+
+#### Agents
+
+- `WEBAPI_PORT` - Port for API server (default: 8080)
+- `DNSDIST_CONSOLE_HOST` - DNSDist console host (default: 127.0.0.1)
+- `DNSDIST_CONSOLE_PORT` - DNSDist console port (default: 5199)
+- `DNSDIST_KEY` - Encryption key for console authentication (**CHANGE IN PRODUCTION**)
+- `WEBAPI_TOKEN` - Web API authentication token (**CHANGE IN PRODUCTION**)
+
+#### Monitoring
+
+- `VICTORIA_METRICS_ENABLED` =false
+- `VICTORIA_METRICS_HOST` - Victoria Metrics host (default: localhost)
+- `VICTORIA_METRICS_PORT` - Victoria Metrics port (default: 8428)
+- `VICTORIA_METRICS_URL` - Victoria Metrics URL path (default: /api/v1/import/prometheus)
+
+
+
+### Pytest
+```
+cd app
+pytest test_webapi_agent.py -v
+pytest test_console.py -v
 ```

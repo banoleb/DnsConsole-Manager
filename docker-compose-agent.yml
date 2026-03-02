@@ -2,7 +2,8 @@
 # change  DNSDIST_KEY WEBAPI_TOKEN
 services:
   agent:
-    build: .
+    image: banoleb666/dnsconsole-manager:0.0.1
+    # build: .
     container_name: dist-agent1
     network_mode: host
     environment:

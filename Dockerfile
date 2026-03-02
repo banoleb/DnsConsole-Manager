@@ -1,33 +1,49 @@
-FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y \
+FROM python:3.11-alpine AS builder
+
+RUN apk add --no-cache \
     gcc \
-    curl \
+    musl-dev \
     libsodium-dev \
-    supervisor
-
-RUN  apt-get clean && rm -rf /var/lib/apt/lists/*
+    curl
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+ENV PYTHONUSERBASE=/app/.local
+RUN pip install --no-cache-dir --user --no-warn-script-location \
+    --no-compile \
+    -r requirements.txt
 
-RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d
-COPY supervisord-agent.conf /etc/supervisor/conf.d/supervisord-agent.conf
-COPY supervisord-console.conf /etc/supervisor/conf.d/supervisord-console.conf
+FROM python:3.11-alpine
 
-COPY syncer.sh .
-RUN chmod +x /syncer.sh
+COPY --from=builder /app/.local /app/.local
+ENV PATH=/app/.local/bin:$PATH \
+    PYTHONUSERBASE=/app/.local
 
-RUN mkdir -p /data
-WORKDIR /app
-COPY app/ .
+RUN apk add --no-cache \
+    curl \
+    supervisor \
+    libsodium \
+    bash \
+    && rm -rf /var/cache/apk/*
 
+RUN adduser -D -u 1000 appuser
+
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d /data /app /var/run/supervisor
+
+COPY supervisord-agent.conf /etc/supervisor/conf.d/
+COPY supervisord-console.conf /etc/supervisor/conf.d/
+COPY syncer.sh /syncer.sh
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY app/ /app/
 
-ENV PYTHONUNBUFFERED=1
+RUN chmod +x /syncer.sh /entrypoint.sh && \
+    chown -R appuser:appuser /data /var/log/supervisor /app /etc/supervisor/conf.d /app/.local /var/run/supervisor
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 ENTRYPOINT ["/entrypoint.sh"]
-
 CMD ["console"]
