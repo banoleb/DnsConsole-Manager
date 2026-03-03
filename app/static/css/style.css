@@ -1159,7 +1159,6 @@ input:checked + .slider:before {
 .topology-group-label {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #a5b4fc;
     margin-bottom: 0.75rem;
     padding-bottom: 0.4rem;
     border-bottom: 1px solid var(--border-color);

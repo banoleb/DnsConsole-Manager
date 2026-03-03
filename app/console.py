@@ -1582,12 +1582,16 @@ def update_agent(agent_id):
             agent.group_id = data['group_id']
         if 'is_active' in data:
             agent.is_active = bool(data['is_active'])
+            
 
         # Log status change to history if is_active was changed
         status_changed = False
         if 'is_active' in data and old_is_active != agent.is_active:
+            
             status_changed = True
             status_text = "available" if agent.is_active else "disabled"
+            if not agent.is_active:
+                agent.status = "offline"
             history = CommandHistory(
                 agent_name=agent.agent_name,
                 command=f"agent set new status {status_text}",

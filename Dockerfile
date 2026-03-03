@@ -24,6 +24,7 @@ RUN apk add --no-cache \
     curl \
     supervisor \
     libsodium \
+    libsodium-dev \
     bash \
     && rm -rf /var/cache/apk/*
 

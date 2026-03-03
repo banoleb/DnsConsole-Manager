@@ -32,15 +32,15 @@ class Settings:
     # DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://psqlmaster:psqlmaster@192.168.0.160/distapi')
 
     # Logging settings
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
     LOG_FORMAT = os.environ.get('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     # Debug mode
-    DEBUG = os.environ.get('DEBUG', 'true').lower() in ('true', '1', 'yes')
+    DEBUG = os.environ.get('DEBUG', 'false').lower() in ('true', '1', 'yes')
 
     # Victoria Metrics settings
-    VICTORIA_METRICS_ENABLED = os.environ.get('VICTORIA_METRICS_ENABLED', 'true').lower() in ('true', '1', 'yes')
-    VICTORIA_METRICS_HOST = os.environ.get('VICTORIA_METRICS_HOST', 'grafana.k3s-master.ru')
+    VICTORIA_METRICS_ENABLED = os.environ.get('VICTORIA_METRICS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    VICTORIA_METRICS_HOST = os.environ.get('VICTORIA_METRICS_HOST', 'localhost')
     VICTORIA_METRICS_PORT = int(os.environ.get('VICTORIA_METRICS_PORT', '8428'))
     VICTORIA_METRICS_URL = os.environ.get('VICTORIA_METRICS_URL', '/api/v1/import/prometheus')
 
@@ -64,6 +64,4 @@ class Settings:
             format=cls.LOG_FORMAT
         )
 
-
-# Create a singleton instance for easy importing
 settings = Settings()

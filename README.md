@@ -99,6 +99,12 @@ python3 webapi-agent.py --port 8080 --console-host  127.0.0.1 --console-port 519
 docker compose -f docker-compose-agent.yml up -d
 ```
 
+5. Check heath status
+
+```
+http://0.0.0.0:8055/api/v1/info
+```
+
 
 ### Start Web Console
 ##### start console on the dns-dist host or on dedicated server or vm
