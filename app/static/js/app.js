@@ -171,21 +171,20 @@ createApp({
             this.isRefreshing = true;
             try {
 
-                // const pathParts = window.location.pathname.split('/').filter(Boolean);
-                // // Проверяем, что второй сегмент - это число (ID агента)
-                // const idPattern = /^\d+$/;  // Только цифры
-                // const url = (pathParts[0] === 'agents' && pathParts.length === 2 && idPattern.test(pathParts[1]))
-                //     ? `/api/agents/${pathParts[1]}`
-                //     : '/api/agents';
-
-
                 const pathParts = window.location.pathname.split('/').filter(Boolean);
                 const isAgentDetail = pathParts[0] === 'agents' &&
                                     pathParts.length === 2 &&
-                                    /^\d+$/.test(pathParts[1]); // Только цифры
-
+                                    /^\d+$/.test(pathParts[1]);
+                if (pathParts[1]) {
+                    this.expandedAgents[0] = true; 
+                    this.expandedRules[0] = true; 
+                    this.expandedServers[0] = true; 
+                    this.expandedTopClients[0] = true; 
+                    this.expandedTopQueries[0] = true; 
+                    this.showActiveOnly = false;
+                }
                 const url = isAgentDetail ? `/api/agents/${pathParts[1]}` : '/api/agents';
-
+                
                 const response = await fetch(url);
                 const data = await response.json();
                 this.agents = data;
@@ -349,6 +348,7 @@ createApp({
 
                         html += `<div style="margin-bottom: 15px; padding-bottom: 15px; ${isLastItem ? '' : 'border-bottom: 1px solid #444;'}">`;
                         html += `<div style="color: ${statusColor}; font-weight: bold;">${statusIcon} ${this.escapeHtml(result.agent_name)}</div>`;
+                        html += `<div font-weight: bold;">${command}</div>`;
 
                         if (result.success) {
                             // Check if this is showRules() with parsed data
@@ -465,7 +465,7 @@ createApp({
                     // Check if this is showRules() with parsed data
                     if (data.parsed_rules && Array.isArray(data.parsed_rules)) {
                         // Format parsed rules as a nice table
-                        let output = '<span style="color: #28a745;">✓ Success</span>\n\n';
+                        let output = '<span style="color: #28a745;">✓ Success</span>\n\n'+' Command: '+command;
                         output += '<div style="margin-top: 10px;">';
                         output += '<strong>Rules Information:</strong><br>';
                         output += '<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">';
@@ -503,7 +503,7 @@ createApp({
                     // Check if this is showServers() with parsed data
                     } else if (data.parsed_servers && Array.isArray(data.parsed_servers)) {
                         // Format parsed servers as a nice table
-                        let output = '<span style="color: #28a745;">✓ Success</span>\n\n';
+                        let output = '<span style="color: #28a745;">✓ Success</span>\n\n'+' Command: '+command;
                         output += '<div style="margin-top: 10px;">';
                         output += '<strong>Servers Information:</strong><br>';
                         output += '<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">';
@@ -547,13 +547,14 @@ createApp({
 
                         this.agentOutputs[index] = output;
                     } else {
-                        this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n\n${this.escapeHtml(data.result || 'Command executed successfully')}`;
+                        this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n\n${this.escapeHtml(data.result || 'Command executed successfully')}`+'\nCommand: '+command;
+                        
                     }
                 } else {
-                    this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Error</span>\n\n${this.escapeHtml(data.error || 'Unknown error')}`;
+                    this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Error</span>\n\n${this.escapeHtml(data.error || 'Unknown error')}`+'\nCommand: '+command;
                 }
             } catch (error) {
-                this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Connection Error</span>\n\n${this.escapeHtml(error.message)}`;
+                this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Connection Error</span>\n\n${this.escapeHtml(error.message)}`+'\nCommand: '+command;
             }
         },
         handleBroadcastEnter() {

@@ -5,7 +5,7 @@ createApp({
         return {
             rules: [],
             searchQuery: '',
-            sortKey: 'id',
+            sortKey: 'agent_name',
             sortOrder: 'asc',
             loading: false,
             isRefreshing: false,

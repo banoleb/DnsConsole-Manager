@@ -74,12 +74,25 @@ body.light-theme {
     font-weight: bold;
 }
 
+.help-icon-dist {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background: #66b954;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: bold;
+}
+
 .tooltip-text {
     visibility: hidden;
     position: absolute;
     bottom: -135%;
     /* left: -10%; */
-    transform: translateX(-50%);
+    transform: translateX(-100%);
     background: #333;
     color: white;
     padding: 8px 12px;
@@ -213,13 +226,30 @@ a:link {
 /* Buttons */
 .btn {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--btn-border);
+    /* border: 1px solid var(--btn-border); */
     background-color: var(--btn-bg);
     color: var(--text-color);
     cursor: pointer;
     border-radius: 4px;
     font-size: 0.9rem;
     transition: all 0.2s;
+}
+
+.btn-small {
+    padding: 0.2rem 1rem;
+    /* border: 1px solid var(--btn-border); */
+    background-color: var(--btn-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+    margin-top: 3px;
+    /* width: 100%; */
+}
+.btn-small:hover {
+    background-color: var(--btn-hover-bg);
+    border-color: var(--btn-hover-border);
 }
 
 .btn:hover {
@@ -726,7 +756,7 @@ a:link {
     padding: 0.5rem 1rem;
     background-color: var(--btn-bg);
     color: var(--text-color);
-    border: 1px solid var(--btn-border);
+    /* border: 1px solid var(--btn-border); */
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;

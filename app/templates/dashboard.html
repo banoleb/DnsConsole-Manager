@@ -109,16 +109,14 @@
                                             <!-- Rules list if any -->
                                             <div v-if="getRulesCount(agent.name) > 0" class="topo-rules-list">
                                                 <div
-                                                    v-for="rule in getAgentRules(agent.name).slice(0, 5)"
+                                                    v-for="rule in getAgentRules(agent.name)"
                                                     :key="rule.id"
                                                     class="topo-rule-chip"
                                                     :title="rule.rule + ' → ' + rule.action"
                                                 >
                                                     <span class="topo-rule-name">{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</span>
                                                 </div>
-                                                <div v-if="getRulesCount(agent.name) > 5" class="topo-rule-chip topo-rule-more">
-                                                    +{{ getRulesCount(agent.name) - 5 }} more
-                                                </div>
+
                                             </div>
                                         </div>
                                     </div>
@@ -150,29 +148,43 @@
                                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
                                                 {{ agent.name }}
                                             </div>
-                                            <div class="topo-agent-url">{{ agent.url }}</div>
+                                    
+                                            <div class="topo-agent-url"><a :href="agent.url+'/health'">{{ agent.url }}</a></div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-rules">
                                                     📋 {{ getRulesCount(agent.name) }} rules
-                                                </span>
-                                                <span class="topo-badge topo-badge-servers">
-                                                    🖥️ {{ getServersCount(agent.name) }} servers
                                                 </span>
                                             </div>
                                             <!-- Rules list if any -->
                                             <div v-if="getRulesCount(agent.name) > 0" class="topo-rules-list">
                                                 <div
-                                                    v-for="rule in getAgentRules(agent.name).slice(0, 5)"
+                                                    v-for="rule in getAgentRules(agent.name)"
                                                     :key="rule.id"
                                                     class="topo-rule-chip"
                                                     :title="rule.rule + ' → ' + rule.action"
                                                 >
-                                                <!-- <span v-if="rule.has_synced === 1" class="badge badge-synced"><a :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span> -->
-
-                                                    <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
+                                                <div  v-if="rule.has_synced === 1">
+                                                <span class="topo-dynblock-chip"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }} (DynBlock Rules)</a></span>
                                                 </div>
-                                                <div v-if="getRulesCount(agent.name) > 5" class="topo-rule-chip topo-rule-more">
-                                                    +{{ getRulesCount(agent.name) - 5 }} more
+                                                <div  v-if="rule.has_synced === 0">
+                                                <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
+                                                </div>                                               
+                                            </div>
+                                            <div class="topo-agent-badges">
+                                                <span class="topo-badge topo-badge-servers">
+                                                    🖥️ {{ getServersCount(agent.name) }} servers
+                                                </span>
+                                            </div>
+                                            <!-- agentsServers list if any -->
+                                            <div v-if="getServersCount(agent.name) > 0" class="topo-rules-list">
+                                                <div
+                                                    v-for="servers in getServers(agent.name)"
+                                                    :key="servers.id"
+                                                    class="topo-rule-chip"
+                                                    :title="servers.name"
+                                                >
+                                                <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + servers.name" >{{ servers.name  }}</a></span>
+                                                : {{ servers.address  }} : {{ servers.state  }} : qps : {{ servers.queries  }}
                                                 </div>
                                             </div>
                                         </div>

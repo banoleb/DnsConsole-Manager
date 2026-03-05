@@ -1,6 +1,5 @@
-# DnsConsole-Manager
+# DnsConsole-Manager (beta v0.0.2)
 
-#### BETA v0.0.1 28.02.2026 (use at your own risk)
 ✨`I am actively developing the project and will be glad to receive any contribution.`
 
 😎`The project is 99 percent vibe coding and 1 percent my idea.`
@@ -126,7 +125,16 @@ python3 console.py
 
 gunicorn --workers 4 --bind 0.0.0.0:5000 wsgi:app
 
-# or
+```
+
+
+to start background syncer process:
+```
+./syncer.sh
+```
+
+In docker
+```
 # change: docker-compose-console.yml environments or .env file
 docker compose -f docker-compose-console.yml build
 docker compose -f docker-compose-console.yml up -d --remove-orphans
@@ -202,3 +210,11 @@ cd app
 pytest test_webapi_agent.py -v
 pytest test_console.py -v
 ```
+
+
+### ChangeLog
+
+#### BETA v0.0.1 28.02.2026
+- init project
+#### BETA v0.0.2 05.03.2026
+- Minor changes, background sync logic fixed. Action buttons added for rules

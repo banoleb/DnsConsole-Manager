@@ -48,14 +48,17 @@
                                     <th @click="sortBy('id')" style="cursor: pointer; width: 2%;">
                                         ID {{ getSortIcon('id') }}
                                     </th>
-                                    <th @click="sortBy('agent_name')" style="cursor: pointer; width: 9%;">
+                                    <th @click="sortBy('agent_name')" style="cursor: pointer; width: 8%;">
                                         Agent {{ getSortIcon('agent_name') }}
                                     </th>
                                     <!-- <th @click="sortBy('agent_online')" style="cursor: pointer; width: 8%;">
                                         Online {{ getSortIcon('agent_online') }}
                                     </th> -->
-                                    <th @click="sortBy('name')" style="cursor: pointer; width: 10%;">
+                                    <th @click="sortBy('name')" style="cursor: pointer; width: 9%;">
                                         Name {{ getSortIcon('name') }}
+                                    </th>
+                                    <th @click="sortBy('rule_id')" style="cursor: pointer; width: 2%;">
+                                        Dist ID{{ getSortIcon('rule_id') }}
                                     </th>
                                     <th @click="sortBy('uuid')" style="cursor: pointer; width: 18%;">
                                         UUID {{ getSortIcon('uuid') }}
@@ -95,6 +98,7 @@
                                     </td>
 
                                     <td style="padding: 0.33rem;">{{ rule.name || '-' }}</td>
+                                    <td style="padding: 0.33rem;">{{ rule.rule_id  }}</td>
                                     <td style="padding: 0.33rem;">{{ rule.uuid || '-' }}</td>
                                     <td style="padding: 0.33rem;">
                                         <span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
@@ -104,7 +108,10 @@
                                             <span class="tooltip-text">Rule has synced from Console</span>
                                         </div>
 
-                                        <span v-if="rule.has_synced === 0">-</span>
+                                        <div v-if="rule.has_synced === 0"  class="tooltip-container">
+                                        <span class="help-icon-dist">?</span>
+                                        <span class="tooltip-text">Rule has synced from dist</span>
+                                        </div>
                                     </td>
                                     <td style="padding: 0.33rem;">{{ rule.creation_order }}</td>
                                     <td style="padding: 0.33rem;">{{ rule.matches }}</td>
@@ -113,15 +120,18 @@
                                     <td style="padding: 0.33rem; font-size: 0.85rem;">{{ formatDate(rule.updated_at) }}</td>
                                     <td style="padding: 0.33rem; text-align: center;">
                                         <div  class="tooltip-container">
+                                            <div v-if="rule.agent_online === 0 "  >
                                         <button
-                                            class="btn btn-sm"
+                                            class="btn-small"
                                             @click="deleteRule(rule)"
                                             aria-label="Delete rule"
                                         >
                                         Delete
-                                        <div class="tooltip-text"><h4>Do not use it For Online agents</h4>
-                                            <h5>this rule with synced agan</h5>
-                                            <h5>Use it for old inactive rules and agents</h5></div>
+                                            </div>
+                                        <div class="tooltip-text"><h5></h5><h5>Delete from Database, not from Agent!</h5>
+                                        </h5> For old inactive rules and agents only.</h5>
+                                            <h5>Not for use with synced online agents.</h5>
+                                        </div>
 
                                         </button>
 

@@ -26,7 +26,7 @@
                         <label class="form-label">Broadcast Command to Agents</label>
                         <button class="btn" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">showRules</button>
                         <button class="btn" @click="sendBroadcastCommand('showPools()')">showPools</button>
-                        <button class="btn" @click="sendBroadcastCommand('showServers()')">showServers</button>
+                        <button class="btn" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">showServers</button>
                         <button class="btn" @click="sendBroadcastCommand('topClients()')">topClients</button>
                         <button class="btn" @click="sendBroadcastCommand('topResponses(10)')">topResponses</button>
                         <button class="btn" @click="sendBroadcastCommand('topResponses(10)')">dumpStats</button>
@@ -164,7 +164,7 @@
                                     <label class="form-label">Command</label>
                                     <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">showRules</button>
                                     <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showPools()')">showPools</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showServers()')">showServers</button>
+                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">showServers</button>
                                     <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topClients()')">topClients</button>
                                     <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">topResponses</button>
                                     <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">dumpStats</button>
@@ -226,18 +226,25 @@
                                                     <tr>
                                                         <th style="width: 2%;">ID</th>
                                                         <th style="width: 11%;">Name</th>
-                                                        <th style="width: 20%;">UUID</th>
-                                                        <th style="width: 10%;">
+                                                        <th style="width: 17%;">UUID</th>
+                                                        <th style="width: 5%;">
                                                         <div class="tooltip-container">
                                                             <span class="help-icon">?</span>
                                                             <span class="tooltip-text">Rules from the Web-Console-Manager - from rules tab</span>
                                                             Synced
                                                         </div>
                                                         </th>
-                                                        <th style="width: 7%;">C. Order</th>
-                                                        <th style="width: 7%;">Matches</th>
-                                                        <th style="width: 30%;">Rule</th>
+                                                        <th style="width: 5%;">C. Order</th>
+                                                        <th style="width: 5%;">Matches</th>
+                                                        <th style="width: 25%;">Rule</th>
                                                         <th style="width: 20%;">Action</th>
+                                                        <th style="width: 10%;">
+                                                            <div class="tooltip-container">
+                                                                <span class="help-icon">?</span>
+                                                                <span class="tooltip-text">Send a command to the agent. The rules are updated automatically within 10 seconds.</span>
+                                                                Comand
+                                                            </div>
+                                                        </th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -252,6 +259,9 @@
                                                         <td>{{ rule.matches }}</td>
                                                         <td><code>{{ rule.rule }}</code></td>
                                                         <td><code>{{ rule.action }}</code></td>
+                                                        <td><button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button></td>
+
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -274,16 +284,18 @@
                                                     <tr>
                                                         <th style="width: 4%;">ID</th>
                                                         <th style="width: 12%;">Name</th>
-                                                        <th style="width: 14%;">Address</th>
+                                                        <th style="width: 11%;">Address</th>
                                                         <th style="width: 6%;">State</th>
                                                         <th style="width: 6%;">QPS</th>
                                                         <th style="width: 6%;">Queries</th>
                                                         <th style="width: 6%;">Drops</th>
                                                         <th style="width: 6%;">Drate</th>
                                                         <th style="width: 6%;">Lat</th>
-                                                        <th style="width: 6%;">TCP</th>
+                                                        <th style="width: 3%;">TCP</th>
                                                         <th style="width: 6%;">Out</th>
-                                                        <th style="width: 22%;">Pools</th>
+                                                        <th style="width: 18%;">Pools</th>
+                                                        <th style="width: 10%;">Comand</th>
+
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -300,6 +312,11 @@
                                                         <td>{{ server.tcp }}</td>
                                                         <td>{{ server.outstanding }}</td>
                                                         <td><code>{{ server.pools }}</code></td>
+                                                        <td>
+                                                        <div><button >Down-UP</button>
+                                                        
+                                                        </div>
+                                                        </td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -320,16 +337,24 @@
                                             <table class="rules-table">
                                                 <thead>
                                                     <tr>
-                                                        <th style="width: 10%;">Rank</th>
-                                                        <th style="width: 50%;">Client</th>
-                                                        <th style="width: 20%;">Queries</th>
-                                                        <th style="width: 20%;">Percentage</th>
+                                                        <th style="width: 5%;">Rank</th>
+                                                        <th style="width: 10%;">Client</th>
+                                                        <th style="width: 55%;">Actions</th>
+                                                        <th style="width: 5%;">Queries</th>
+                                                        <th style="width: 5%;">Percentage</th>
+
                                                     </tr>
                                                 </thead>
-                                                <tbody>
+                                                <tbody> 
                                                     <tr v-for="client in getTopClients(agent.id)" :key="client.id">
                                                         <td>{{ client.rank }}</td>
-                                                        <td><code>{{ client.client }}</code></td>
+                                                        <td><code>{{ client.client }}</code></td> 
+                                                        <td>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'})')">DropAction</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'})')">QPSAction(100)</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' + client.client+ '\'})')">QPSAction(1000)</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button>
+                                                        </td>
                                                         <td>{{ client.queries }}</td>
                                                         <td>{{ client.percentage }}</td>
                                                     </tr>

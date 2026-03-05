@@ -375,9 +375,6 @@
                 <div class="modal-body">
                     <!-- Add New Template Form -->
                     <div class="card mb-4">
-                        <div class="card-header success">
-                            <h6>{{ editingTemplate.id ? '✏️ Edit Template' : '➕ Add New Template' }}</h6>
-                        </div>
                         <div class="card-body">
                             <form @submit.prevent="saveTemplate">
                                 <div class="mb-3">
@@ -408,30 +405,45 @@
                                         Use {{r_name}} for rule name and {{r_uuid}} for UUID placeholders
                                     </small>
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label">
-                                        Description <span class="text-muted">(optional)</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        v-model="editingTemplate.description"
-                                        placeholder="e.g., Template for blocking IP addresses"
-                                    />
-                                </div>
-                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                                    <button
-                                        v-if="editingTemplate.id"
-                                        type="button"
-                                        class="btn btn-secondary"
-                                        @click="cancelEditTemplate"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button type="submit" class="btn btn-success">
-                                        {{ editingTemplate.id ? 'Update Template' : 'Add Template' }}
-                                    </button>
-                                </div>
+                                <table class="table table-striped">
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <div class="mb-3" style="width: 1000px;">
+                                                    <label class="form-label">
+                                                        Description <span class="text-muted">(optional)</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        class="form-control"
+                                                        v-model="editingTemplate.description"
+                                                        placeholder="e.g., Template for blocking IP addresses"
+                                                    />
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="mb-3" style="gap: 0.5rem; justify-content: flex-end; ">
+                                                <label class="form-label">
+                                                    Actions 
+                                                </label>
+                                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                                    <button
+                                                        v-if="editingTemplate.id"
+                                                        type="button"
+                                                        class="btn btn-secondary"
+                                                        @click="cancelEditTemplate"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button style="width: 300px;" type="submit" class="btn btn-success">
+                                                        {{ editingTemplate.id ? 'Update Template' : 'Add Template' }}
+                                                    </button>
+                                                </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </form>
                             <div v-if="templateModalMessage" :class="['alert', `alert-${templateModalMessage.type}`]" class="mt-3">
                                 {{ templateModalMessage.text }}
@@ -486,7 +498,7 @@
                                                     style="background-color: #dc3545; border-color: #dc3545; color: #fff;"
                                                     @click="deleteTemplate(template)"
                                                 >
-                                                    🗑️ Delete
+                                                    🗑️
                                                 </button>
                                             </td>
                                         </tr>

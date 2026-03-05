@@ -87,62 +87,57 @@ def extract_uuid_from_adddynblocks(command):
 
 def sync_rules_to_database(agent_name, parsed_rules, session):
 
+    """
+    Operating logic:
+    1. UUID is the main field for identifying errors.
+    2. If there are no rules in the database for the UUID, we substitute it.
+    3. If a rule exists, we compare all fields and update only those that have changed.
+    4. Rules that exist in the database but are not in the input data are deleted.
+    5. The order of the data entry rules is not important.
+    """
     logger.info(f"=== STARTING SYNC for agent {agent_name} ===")
-
-    # Fetch existing rules for this agent
+    
+    # Get the existing agent rules
     existing_rules = session.query(Rule).filter_by(agent_name=agent_name).all()
     logger.info(f"Found {len(existing_rules)} existing rules in DB")
-
-    # Create lookup dictionaries
-    existing_rules_by_uuid = {}      # поиск по UUID
-    existing_rules_by_rule_id = {}   # поиск по rule_id
-
-    for rule in existing_rules:
-        if rule.uuid:
-            existing_rules_by_uuid[rule.uuid] = rule
-        if rule.rule_id is not None:
-            existing_rules_by_rule_id[rule.rule_id] = rule
-
+    
+    # Create a lookup dictionary by UUID (primary identifier)
+    existing_rules_by_uuid = {rule.uuid: rule for rule in existing_rules if rule.uuid}
     logger.info(f"UUID lookup map: {len(existing_rules_by_uuid)} entries")
-    logger.info(f"Rule ID lookup map: {len(existing_rules_by_rule_id)} entries")
-
-    # Statistics
-    added_count = 0
-    updated_count = 0
-    unchanged_count = 0
-    deleted_count = 0
-
-    # Track seen identifiers from parsed_rules
-    seen_uuids = set()
-    seen_rule_ids = set()
-
+    
+    stats = {
+        'added': 0,
+        'updated': 0,
+        'unchanged': 0,
+        'deleted': 0
+    }
+    
+    # If there is no input data, we delete all agent rules.
     if not parsed_rules:
         logger.warning(f"No rules to sync for agent {agent_name}")
-        # Delete ALL existing rules
         for rule in existing_rules:
             logger.info(f"Deleting rule {rule.uuid or rule.rule_id}")
             session.delete(rule)
-            deleted_count += 1
+            stats['deleted'] += 1
     else:
         logger.info(f"Processing {len(parsed_rules)} rules from input")
-
-        # FIRST PASS: Process all incoming rules
+        
+        # A set of UUIDs from the input data to determine the rules to be removed
+        input_uuids = set()
+        
+        # We process each rule from the input data
         for rule_data in parsed_rules:
             rule_uuid = rule_data.get('uuid')
-            rule_id = rule_data.get('id')
-
-            logger.debug(f"Processing: UUID={rule_uuid}, rule_id={rule_id}")
-
-            # Track seen identifiers
-            if rule_uuid:
-                seen_uuids.add(rule_uuid)
-            if rule_id is not None:
-                seen_rule_ids.add(rule_id)
-
-            # Create new rule instance
+            
+            # Skip rules without UUIDs (shouldn't occur, but just in case)
+            if not rule_uuid:
+                logger.warning(f"Rule without UUID, skipping: {rule_data}")
+                continue
+            input_uuids.add(rule_uuid)
+            
             new_rule = Rule(
                 agent_name=agent_name,
-                rule_id=rule_id,
+                rule_id=rule_data.get('id'),
                 name=rule_data.get('name'),
                 matches=rule_data.get('matches', 0),
                 rule=rule_data.get('rule', ''),
@@ -151,87 +146,27 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
                 creation_order=rule_data.get('creation_order')
             )
 
-            # Find existing rule - first by UUID, then by rule_id
-            existing_rule = None
-            # found_by = None
-
-            if rule_uuid and rule_uuid in existing_rules_by_uuid:
-                existing_rule = existing_rules_by_uuid[rule_uuid]
-                # found_by = "UUID"
-                logger.debug(f"Found by UUID: {rule_uuid}")
-            elif rule_id is not None and rule_id in existing_rules_by_rule_id:
-                existing_rule = existing_rules_by_rule_id[rule_id]
-                # found_by = "rule_id"
-                logger.debug(f"Found by rule_id: {rule_id}")
-
-                # If rule has UUID in DB but not in new data, update it
-                if existing_rule.uuid and not rule_uuid:
-                    logger.info(f"Rule with rule_id {rule_id} has UUID {existing_rule.uuid} in DB but no UUID in new data")
-                # If UUID changed
-                elif existing_rule.uuid and rule_uuid and existing_rule.uuid != rule_uuid:
-                    logger.info(f"Rule with rule_id {rule_id} changing UUID from {existing_rule.uuid} to {rule_uuid}")
-                    existing_rule.uuid = rule_uuid
+            # Checking if a rule exists in the database by UUID
+            existing_rule = existing_rules_by_uuid.get(rule_uuid)
 
             if existing_rule:
-                # Rule exists - check for changes
-                changed_fields = {}
-
-                # Fields to compare (all except id)
-                fields_to_compare = ['rule_id', 'name', 'matches', 'rule', 'action', 'uuid', 'creation_order']
-
-                for field in fields_to_compare:
-                    old_value = getattr(existing_rule, field)
-                    new_value = getattr(new_rule, field)
-
-                    if old_value != new_value:
-                        changed_fields[field] = (old_value, new_value)
-                        logger.debug(f"  Field '{field}': '{old_value}' -> '{new_value}'")
-                        setattr(existing_rule, field, new_value)
-
-                if changed_fields:
-                    updated_count += 1
-                    logger.debug(f"Rule updated ({len(changed_fields)} fields changed)")
+                if _update_rule_if_changed(existing_rule, new_rule):
+                    stats['updated'] += 1
+                    logger.debug(f"Rule {rule_uuid} updated")
                 else:
-                    unchanged_count += 1
-                    logger.debug("Rule unchanged")
+                    stats['unchanged'] += 1
+                    logger.debug(f"Rule {rule_uuid} unchanged")
             else:
-                # New rule - add to database
-                logger.debug("New rule - adding to database")
                 session.add(new_rule)
-                added_count += 1
-
-        # SECOND PASS: Delete rules that exist in DB but not in parsed_rules
-        logger.info("Checking for rules to delete (exist in DB but not in new data)")
-
-        # Check ALL existing rules
+                stats['added'] += 1
+                logger.debug(f"New rule {rule_uuid} added")
+        
+        # We delete rules that are in the database but are not in the input data.
         for rule in existing_rules:
-            should_delete = False
-
-            # Rule has UUID
-            if rule.uuid:
-                if rule.uuid not in seen_uuids:
-                    # UUID not found in new data
-                    should_delete = True
-                    logger.debug(f"Rule with UUID {rule.uuid} not found in new data")
-
-            # Rule has no UUID but has rule_id
-            elif rule.rule_id is not None:
-                if rule.rule_id not in seen_rule_ids:
-                    # rule_id not found in new data
-                    should_delete = True
-                    logger.debug(f"Rule with rule_id {rule.rule_id} (no UUID) not found in new data")
-
-            # Rule has neither UUID nor rule_id (should not happen, but just in case)
-            else:
-                should_delete = True
-                logger.debug("Rule with no identifiers found, deleting")
-
-            if should_delete:
-                logger.info(f"Deleting rule {rule.uuid or rule.rule_id} (not in new data)")
+            if rule.uuid and rule.uuid not in input_uuids:
+                logger.info(f"Deleting rule {rule.uuid} (not in input data)")
                 session.delete(rule)
-                deleted_count += 1
-
-    # Commit changes
+                stats['deleted'] += 1
     try:
         session.commit()
         logger.info(f"Commit successful for agent {agent_name}")
@@ -239,21 +174,34 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
         logger.error(f"Error during commit: {e}")
         session.rollback()
         raise
+    _log_sync_results(agent_name, stats)
+    return stats
 
-    # Log results
+
+def _update_rule_if_changed(existing_rule, new_rule):
+    """
+    Compares the fields of the existing rule with the new one and updates the changed ones.
+    """
+    fields_to_compare = ['rule_id', 'name', 'matches', 'rule', 'action', 'creation_order']
+    changed = False
+    
+    for field in fields_to_compare:
+        old_value = getattr(existing_rule, field)
+        new_value = getattr(new_rule, field)
+        if old_value != new_value:
+            logger.debug(f"  Field '{field}': '{old_value}' -> '{new_value}'")
+            setattr(existing_rule, field, new_value)
+            changed = True
+    return changed
+
+
+def _log_sync_results(agent_name, stats):
     logger.info(f"=== SYNC RESULTS for agent {agent_name} ===")
-    logger.info(f"Added: {added_count}")
-    logger.info(f"Updated: {updated_count}")
-    logger.info(f"Unchanged: {unchanged_count}")
-    logger.info(f"Deleted: {deleted_count}")
+    logger.info(f"Added: {stats['added']}")
+    logger.info(f"Updated: {stats['updated']}")
+    logger.info(f"Unchanged: {stats['unchanged']}")
+    logger.info(f"Deleted: {stats['deleted']}")
     logger.info("=== END SYNC ===\n")
-
-    # return {
-    #     'added': added_count,
-    #     'updated': updated_count,
-    #     'unchanged': unchanged_count,
-    #     'deleted': deleted_count
-    # }
 
 
 def sync_agent_status_to_database(agent_name, status, session):
@@ -1154,7 +1102,7 @@ def get_agents_rules():
         agent_names = [agent.agent_name for agent in agents]
 
         # Fetch all rules for active agents in a single query
-        all_rules = session.query(Rule).filter(Rule.agent_name.in_(agent_names)).all()
+        all_rules = session.query(Rule).filter(Rule.agent_name.in_(agent_names)).order_by(Rule.rule_id).all()
         dynblock_uuids = set(dbr.rule_uuid for dbr in session.query(DynBlockRule.rule_uuid).distinct())
 
         # Group rules by agent_name

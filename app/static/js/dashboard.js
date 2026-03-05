@@ -129,6 +129,10 @@ Vue.createApp({
             const as = this.agentsServers.find(s => s.agent_name === agentName);
             return as ? (as.servers ? as.servers.length : 0) : 0;
         },
+        getServers(agentName) {
+            const ar = this.agentsServers.find(r => r.agent_name === agentName);
+            return ar ? (ar.servers || []) : [];
+        },
         getGroupAgents(groupId) {
             return this.agents.filter(a => a.group_id === groupId);
         },
