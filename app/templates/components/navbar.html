@@ -1,4 +1,4 @@
-{% raw %}
+
 <span class="navbar-brand">DnsConsole-Manager</span>
 <div class="navbar-sync-status">
     <span class="sync-status-label" style="margin-right: 20px;">
@@ -29,13 +29,24 @@
     <a href="/rules" :class="['btn', 'btn-sm', { active: isActivePage('/rules') }]" style="text-decoration: none; color: inherit;">Summary Rules</a>
     <a href="/summary" :class="['btn', 'btn-sm', { active: isActivePage('/summary') }]" style="text-decoration: none; color: inherit;">Summary Clients</a>
     <a href="/audit" :class="['btn', 'btn-sm', { active: isActivePage('/audit') }]" style="text-decoration: none; color: inherit;">Audit</a>
-
-    <!-- <button class="btn btn-sm" @click="refreshAgents">
-    <span :class="{ rotating: isRefreshing }"></span> Refresh
-    </button> -->
+    <!-- <a href="/users" :class="['btn', 'btn-sm', { active: isActivePage('/users') }]" style="text-decoration: none; color: inherit;">Users</a> -->
+    <a href="/users" 
+    :class="['btn', 'btn-sm', { active: isActivePage('/users') }]"
+    style="text-decoration: none; color: inherit;"
+    v-if="authEnabled">
+    Users
+    </a>
+    <a href="/logout" 
+    class="btn btn-outline-secondary btn-sm ms-2" 
+    v-if="authEnabled"
+    style="text-decoration: none; color: inherit;"
+    title="Sign out">
+    Logout
+    </a>
     <button class="btn btn-sm" @click="toggleTheme" :title="isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'">
         {{ isDarkTheme ? '☀️' : '🌙' }}
     </button>
     <a href="https://github.com/banoleb/dnsdist-webapi" class="btn btn-sm" style="text-decoration: none; color: inherit;">v0.0.2</a>
+
 </div>
-{% endraw %}
+

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture
 def client():
-    """Create a test client for the Flask app"""
+    """Create a test client for the Flask app with an authenticated session"""
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
 
@@ -29,6 +29,10 @@ def client():
                 test_db = Database('sqlite:///:memory:')
                 test_db.create_tables()
                 console.db = test_db
+            # Simulate an authenticated session so @login_required passes
+            with client.session_transaction() as sess:
+                sess['user_id'] = 1
+                sess['username'] = 'admin'
             yield client
 
 
@@ -243,3 +247,425 @@ class TestBackendHealthEndpoint:
         """Test that backend health endpoint returns JSON"""
         response = client.get('/api/backend-health')
         assert response.content_type == 'application/json'
+
+
+class TestLoginEndpoint:
+    """Tests for authentication endpoints"""
+
+    def test_login_page_returns_html(self):
+        """Test that the login page is accessible without authentication"""
+        app.config['TESTING'] = True
+        with app.test_client() as unauthenticated_client:
+            with app.app_context():
+                import console
+                if console.db is None:
+                    test_db = Database('sqlite:///:memory:')
+                    test_db.create_tables()
+                    console.db = test_db
+                response = unauthenticated_client.get('/login')
+                assert response.status_code == 200
+                assert b'<!DOCTYPE html>' in response.data or b'<html' in response.data
+
+    def test_protected_route_redirects_unauthenticated(self):
+        """Test that protected routes redirect to login when not authenticated"""
+        app.config['TESTING'] = True
+        with app.test_client() as unauthenticated_client:
+            response = unauthenticated_client.get('/')
+            assert response.status_code == 302
+            assert '/login' in response.headers['Location']
+
+    def test_login_with_valid_credentials(self):
+        """Test login with valid admin credentials"""
+        app.config['TESTING'] = True
+        with app.test_client() as unauthenticated_client:
+            with app.app_context():
+                import console
+                if console.db is None:
+                    test_db = Database('sqlite:///:memory:')
+                    test_db.create_tables()
+                    console.db = test_db
+                response = unauthenticated_client.post(
+                    '/login',
+                    data={'username': 'admin', 'password': 'admin'},
+                    follow_redirects=False
+                )
+                assert response.status_code == 302
+
+    def test_login_with_invalid_credentials(self):
+        """Test login with invalid credentials returns error"""
+        app.config['TESTING'] = True
+        with app.test_client() as unauthenticated_client:
+            with app.app_context():
+                import console
+                if console.db is None:
+                    test_db = Database('sqlite:///:memory:')
+                    test_db.create_tables()
+                    console.db = test_db
+                response = unauthenticated_client.post(
+                    '/login',
+                    data={'username': 'admin', 'password': 'wrong'},
+                    follow_redirects=False
+                )
+                assert response.status_code == 200
+                assert b'Invalid' in response.data
+
+    def test_logout_redirects_to_login(self, client):
+        """Test that logout clears session and redirects to login"""
+        response = client.get('/logout', follow_redirects=False)
+        assert response.status_code == 302
+        assert '/login' in response.headers['Location']
+
+
+class TestUsersEndpoint:
+    """Tests for /api/users endpoints"""
+
+    def test_get_users(self, client):
+        """Test GET /api/users returns list of users"""
+        response = client.get('/api/users')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert isinstance(data['users'], list)
+        # Default admin user should exist
+        assert len(data['users']) >= 1
+        assert any(u['username'] == 'admin' for u in data['users'])
+
+    def test_create_user(self, client):
+        """Test POST /api/users creates a new user"""
+        response = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'testuser', 'password': 'testpass'}),
+            content_type='application/json'
+        )
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['user']['username'] == 'testuser'
+
+    def test_create_user_duplicate_username(self, client):
+        """Test POST /api/users with duplicate username returns error"""
+        client.post(
+            '/api/users',
+            data=json.dumps({'username': 'dupuser', 'password': 'pass1'}),
+            content_type='application/json'
+        )
+        response = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'dupuser', 'password': 'pass2'}),
+            content_type='application/json'
+        )
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['success'] is False
+
+    def test_create_user_missing_password(self, client):
+        """Test POST /api/users without password returns error"""
+        response = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'nopassuser'}),
+            content_type='application/json'
+        )
+        assert response.status_code == 400
+
+    def test_update_user(self, client):
+        """Test PUT /api/users/<id> updates a user"""
+        # First create a user
+        create_resp = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'upduser', 'password': 'pass'}),
+            content_type='application/json'
+        )
+        user_id = json.loads(create_resp.data)['user']['id']
+
+        response = client.put(
+            f'/api/users/{user_id}',
+            data=json.dumps({'username': 'upduser_renamed'}),
+            content_type='application/json'
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['user']['username'] == 'upduser_renamed'
+
+    def test_delete_user(self, client):
+        """Test DELETE /api/users/<id> deletes a user"""
+        # Create a user to delete
+        create_resp = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'deluser', 'password': 'pass'}),
+            content_type='application/json'
+        )
+        user_id = json.loads(create_resp.data)['user']['id']
+
+        response = client.delete(f'/api/users/{user_id}')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+
+    def test_cannot_delete_last_active_user(self, client):
+        """Test that the last active user cannot be deleted"""
+        # Get all users and deactivate all except one
+        users_resp = client.get('/api/users')
+        users = json.loads(users_resp.data)['users']
+
+        # Create a fresh scenario: just check that admin can't be deleted
+        # when it's the only active user (the seeded state)
+        # First deactivate everyone except admin
+        admin = next(u for u in users if u['username'] == 'admin')
+        for u in users:
+            if u['id'] != admin['id']:
+                client.delete(f'/api/users/{u["id"]}')
+
+        response = client.delete(f'/api/users/{admin["id"]}')
+        # Should fail because admin is the session user (cannot delete own account)
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['success'] is False
+
+    def test_users_page_accessible(self, client):
+        """Test that the /users page renders for authenticated users"""
+        response = client.get('/users')
+        assert response.status_code == 200
+        assert b'<!DOCTYPE html>' in response.data or b'<html' in response.data
+
+
+class TestAuthEnabledSetting:
+    """Tests for AUTH_ENABLED toggle behaviour"""
+
+    def test_auth_disabled_bypasses_login(self):
+        """When both AUTH_ENABLED and OIDC_ENABLED are False, all routes are open"""
+        import console
+        from settings import settings as s
+        original_auth = s.AUTH_ENABLED
+        original_oidc = s.OIDC_ENABLED
+        s.AUTH_ENABLED = False
+        s.OIDC_ENABLED = False
+        try:
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    # Should NOT redirect to /login
+                    response = c.get('/')
+                    assert response.status_code == 200
+        finally:
+            s.AUTH_ENABLED = original_auth
+            s.OIDC_ENABLED = original_oidc
+
+    def test_auth_enabled_requires_login(self):
+        """When AUTH_ENABLED is True, unauthenticated requests are redirected"""
+        from settings import settings as s
+        original_auth = s.AUTH_ENABLED
+        s.AUTH_ENABLED = True
+        try:
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                response = c.get('/', follow_redirects=False)
+                assert response.status_code == 302
+                assert '/login' in response.headers['Location']
+        finally:
+            s.AUTH_ENABLED = original_auth
+
+    def test_login_page_shows_form_when_auth_enabled(self):
+        """Login page shows the local form when AUTH_ENABLED is True"""
+        from settings import settings as s
+        original_auth, original_oidc = s.AUTH_ENABLED, s.OIDC_ENABLED
+        s.AUTH_ENABLED = True
+        s.OIDC_ENABLED = False
+        try:
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    import console
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    response = c.get('/login')
+                    assert response.status_code == 200
+                    assert b'username' in response.data.lower()
+        finally:
+            s.AUTH_ENABLED = original_auth
+            s.OIDC_ENABLED = original_oidc
+
+    def test_login_page_shows_sso_button_when_oidc_enabled(self):
+        """Login page shows SSO button when OIDC_ENABLED is True"""
+        from settings import settings as s
+        original_auth, original_oidc = s.AUTH_ENABLED, s.OIDC_ENABLED
+        s.AUTH_ENABLED = True
+        s.OIDC_ENABLED = True
+        try:
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    import console
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    response = c.get('/login')
+                    assert response.status_code == 200
+                    assert b'SSO' in response.data or b'sso' in response.data.lower()
+        finally:
+            s.AUTH_ENABLED = original_auth
+            s.OIDC_ENABLED = original_oidc
+
+
+class TestOIDCFlow:
+    """Tests for the OIDC authorization-code flow"""
+
+    def test_oidc_initiate_redirects_to_provider(self):
+        """GET /auth/oidc sets state and redirects to provider"""
+        from unittest.mock import patch
+        from settings import settings as s
+        original_oidc = s.OIDC_ENABLED
+        original_url = s.OIDC_PROVIDER_URL
+        original_client = s.OIDC_CLIENT_ID
+        original_redirect = s.OIDC_REDIRECT_URI
+        s.OIDC_ENABLED = True
+        s.OIDC_PROVIDER_URL = 'https://sso.example.com/realms/myrealm'
+        s.OIDC_CLIENT_ID = 'test-client'
+        s.OIDC_REDIRECT_URI = 'http://localhost/auth/callback'
+        mock_discovery = {
+            'authorization_endpoint': 'https://sso.example.com/realms/myrealm/protocol/openid-connect/auth',
+            'token_endpoint': 'https://sso.example.com/realms/myrealm/protocol/openid-connect/token',
+            'userinfo_endpoint': 'https://sso.example.com/realms/myrealm/protocol/openid-connect/userinfo',
+        }
+        try:
+            import console
+            console._oidc_config_cache = mock_discovery
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    response = c.get('/auth/oidc', follow_redirects=False)
+                    assert response.status_code == 302
+                    location = response.headers['Location']
+                    assert 'sso.example.com' in location
+                    assert 'client_id=test-client' in location
+                    assert 'state=' in location
+        finally:
+            s.OIDC_ENABLED = original_oidc
+            s.OIDC_PROVIDER_URL = original_url
+            s.OIDC_CLIENT_ID = original_client
+            s.OIDC_REDIRECT_URI = original_redirect
+            console._oidc_config_cache = None
+
+    def test_oidc_callback_invalid_state_returns_400(self):
+        """OIDC callback with wrong state returns 400"""
+        from settings import settings as s
+        original_oidc = s.OIDC_ENABLED
+        s.OIDC_ENABLED = True
+        try:
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with c.session_transaction() as sess:
+                    sess['oidc_state'] = 'correct-state'
+                response = c.get('/auth/callback?state=wrong-state&code=abc', follow_redirects=False)
+                assert response.status_code == 400
+        finally:
+            s.OIDC_ENABLED = original_oidc
+
+    def test_oidc_callback_group_check_denies_user(self):
+        """OIDC callback denies user not in required group"""
+        from unittest.mock import patch, MagicMock
+        from settings import settings as s
+        original_oidc = s.OIDC_ENABLED
+        original_group = s.OIDC_REQUIRED_GROUP
+        s.OIDC_ENABLED = True
+        s.OIDC_REQUIRED_GROUP = 'network'
+        mock_discovery = {
+            'authorization_endpoint': 'https://sso.example.com/auth',
+            'token_endpoint': 'https://sso.example.com/token',
+            'userinfo_endpoint': 'https://sso.example.com/userinfo',
+        }
+        try:
+            import console
+            console._oidc_config_cache = mock_discovery
+            mock_token_resp = MagicMock()
+            mock_token_resp.json.return_value = {'access_token': 'test-token'}
+            mock_token_resp.raise_for_status = MagicMock()
+            mock_userinfo_resp = MagicMock()
+            mock_userinfo_resp.json.return_value = {
+                'sub': 'user-123',
+                'preferred_username': 'jdoe',
+                'groups': ['other-group'],
+            }
+            mock_userinfo_resp.raise_for_status = MagicMock()
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    with c.session_transaction() as sess:
+                        sess['oidc_state'] = 'valid-state'
+                    with patch('console.requests.post', return_value=mock_token_resp), \
+                         patch('console.requests.get', return_value=mock_userinfo_resp):
+                        response = c.get(
+                            '/auth/callback?state=valid-state&code=authcode',
+                            follow_redirects=False
+                        )
+                    assert response.status_code == 403
+                    assert b'network' in response.data
+        finally:
+            s.OIDC_ENABLED = original_oidc
+            s.OIDC_REQUIRED_GROUP = original_group
+            console._oidc_config_cache = None
+
+    def test_oidc_callback_group_check_allows_user(self):
+        """OIDC callback allows user in required group and sets session"""
+        from unittest.mock import patch, MagicMock
+        from settings import settings as s
+        original_oidc = s.OIDC_ENABLED
+        original_group = s.OIDC_REQUIRED_GROUP
+        s.OIDC_ENABLED = True
+        s.OIDC_REQUIRED_GROUP = 'network'
+        mock_discovery = {
+            'authorization_endpoint': 'https://sso.example.com/auth',
+            'token_endpoint': 'https://sso.example.com/token',
+            'userinfo_endpoint': 'https://sso.example.com/userinfo',
+        }
+        try:
+            import console
+            console._oidc_config_cache = mock_discovery
+            mock_token_resp = MagicMock()
+            mock_token_resp.json.return_value = {'access_token': 'test-token'}
+            mock_token_resp.raise_for_status = MagicMock()
+            mock_userinfo_resp = MagicMock()
+            mock_userinfo_resp.json.return_value = {
+                'sub': 'user-456',
+                'preferred_username': 'jsmith',
+                'groups': ['network', 'devops'],
+            }
+            mock_userinfo_resp.raise_for_status = MagicMock()
+            app.config['TESTING'] = True
+            with app.test_client() as c:
+                with app.app_context():
+                    if console.db is None:
+                        test_db = Database('sqlite:///:memory:')
+                        test_db.create_tables()
+                        console.db = test_db
+                    with c.session_transaction() as sess:
+                        sess['oidc_state'] = 'valid-state'
+                    with patch('console.requests.post', return_value=mock_token_resp), \
+                         patch('console.requests.get', return_value=mock_userinfo_resp):
+                        response = c.get(
+                            '/auth/callback?state=valid-state&code=authcode',
+                            follow_redirects=False
+                        )
+                    assert response.status_code == 302
+                    with c.session_transaction() as sess:
+                        assert sess.get('username') == 'jsmith'
+                        assert sess.get('auth_method') == 'oidc'
+        finally:
+            s.OIDC_ENABLED = original_oidc
+            s.OIDC_REQUIRED_GROUP = original_group
+            console._oidc_config_cache = None

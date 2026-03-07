@@ -1,24 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    {% include 'components/head.html' %}
+{% include 'components/head.html' %}
 </head>
-{% raw %}
+
 <body>
     <!-- Navbar -->
     <div id="app2">
-        <nav class="navbar">
-            {% endraw %}
+        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
             {% include 'components/navbar.html' %}
-            {% raw %}
         </nav>
     </div>
     <div id="app">
         <!-- Main Container -->
         <div class="container">
-            <h2>Audit Logs</h2>
-            <p class="text-muted mb-4">View all system actions including agent management, rule changes, and broadcast commands</p>
-
             <!-- Audit Logs Table -->
             <div class="card">
                 <div class="card-header primary" style="display: flex; justify-content: space-between; align-items: center;">
@@ -41,20 +36,20 @@
                     </div>
                     <div v-else>
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table class="rules-table">
                                 <thead>
                                     <tr>
-                                        <th>Time</th>
-                                        <th>IP Address</th>
-                                        <th>Action</th>
-                                        <th>Details</th>
+                                        <th style="width: 10%;">Time</th>
+                                        <th style="width: 10%;">IP Address</th>
+                                        <th style="width: 30%;">Action</th>
+                                        <th style="width: 50%;">Details</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="log in auditLogs" :key="log.id">
                                         <td>{{ formatDateTime(log.created_at) }}</td>
                                         <td>{{ log.ip_address }}</td>
-                                        <td><strong>{{ log.action }}</strong></td>
+                                        <td>{{ log.action }}</td>
                                         <td>{{ log.details || '-' }}</td>
                                     </tr>
                                 </tbody>
@@ -101,8 +96,8 @@
             </div>
         </div>
     </div>
-{% endraw %}
-<script src="{{ url_for('static', filename='js/audit.js') }}"></script>
-<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+
+<script src="{{{  url_for('static', filename='js/audit.js') }}}"></script>
+<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
 </body>
 </html>

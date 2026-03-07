@@ -24,8 +24,58 @@ class Settings:
     DNSDIST_CONSOLE_PORT = int(os.environ.get('DNSDIST_CONSOLE_PORT', '5199'))
     DNSDIST_KEY = os.environ.get('DNSDIST_KEY')  # Encryption key for console (optional)
 
+    # -------------------------------------------------------------------------
     # Authentication settings
-    WEBAPI_TOKEN = os.environ.get('WEBAPI_TOKEN')  # Web API authentication token (optional)
+    # -------------------------------------------------------------------------
+
+    # Web API token (legacy, optional)
+    WEBAPI_TOKEN = os.environ.get('WEBAPI_TOKEN')
+
+    # Flask session secret key – MUST be changed in production
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me-in-production')
+
+    # Local username/password authentication
+    # Set AUTH_ENABLED=false to disable the login form entirely (e.g. when
+    # using OIDC as the sole auth method or running in a fully-trusted network).
+    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'true').lower() in ('true', '1', 'yes')
+
+    # -------------------------------------------------------------------------
+    # OpenID Connect (OIDC / OAuth 2.0) SSO settings
+    # -------------------------------------------------------------------------
+    # Set OIDC_ENABLED=true to activate SSO via any OpenID Connect provider
+    # (e.g. Keycloak, Azure AD, Google, Okta, Authentik …).
+    OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'false').lower() in ('true', '1', 'yes')
+
+    # Base URL of the OIDC provider.
+    # The discovery document is fetched from <OIDC_PROVIDER_URL>/.well-known/openid-configuration
+    # Examples:
+    #   Keycloak : https://sso.example.com/realms/myrealm
+    #   Google   : https://accounts.google.com
+    #   Azure AD : https://login.microsoftonline.com/<tenant-id>/v2.0
+    OIDC_PROVIDER_URL = os.environ.get('OIDC_PROVIDER_URL', '')
+
+    # OAuth 2.0 client credentials (register your app in the OIDC provider)
+    OIDC_CLIENT_ID = os.environ.get('OIDC_CLIENT_ID', '')
+    OIDC_CLIENT_SECRET = os.environ.get('OIDC_CLIENT_SECRET', '')
+
+    # Full redirect URI that the provider will call after authentication.
+    # Must match the redirect URI registered in the OIDC provider exactly.
+    # Example: http://dnsconsole.example.com/auth/callback
+    OIDC_REDIRECT_URI = os.environ.get('OIDC_REDIRECT_URI', '')
+
+    # Space-separated list of OIDC scopes to request.
+    # 'openid' is required; add 'groups' or provider-specific scopes as needed.
+    OIDC_SCOPES = os.environ.get('OIDC_SCOPES', 'openid email profile')
+
+    # Optional: name of the claim in the ID token / userinfo response that
+    # contains the list of groups the user belongs to.
+    # Common values: 'groups' (Keycloak, Authentik), 'roles', 'group_membership'
+    OIDC_GROUPS_CLAIM = os.environ.get('OIDC_GROUPS_CLAIM', 'groups')
+
+    # Optional: if non-empty, only users that belong to this group (as reported
+    # by OIDC_GROUPS_CLAIM) are allowed to log in.
+    # Example: OIDC_REQUIRED_GROUP=network
+    OIDC_REQUIRED_GROUP = os.environ.get('OIDC_REQUIRED_GROUP', '')
 
     # Database settings
     DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///dnsdist_webapi.db')
@@ -63,5 +113,6 @@ class Settings:
             level=cls.get_log_level(),
             format=cls.LOG_FORMAT
         )
+
 
 settings = Settings()

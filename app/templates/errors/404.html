@@ -3,14 +3,14 @@
 <head>
     {% include 'components/head.html' %}
 </head>
-{% raw %}
+
 <body>
     <!-- Navbar -->
     <div id="app2">
-        <nav class="navbar">
-            {% endraw %}
+        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
+            
             {% include 'components/navbar.html' %}
-            {% raw %}
+            
         </nav>
     </div>
     <div class="container">
@@ -23,7 +23,7 @@
         </p>
     </div>
 
-{% endraw %}
-<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+
+<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
 </body>
 </html>

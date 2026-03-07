@@ -1,10 +1,13 @@
+
 Vue.createApp({
     data() {
         return {
+
             currentPath: window.location.pathname,
             autoRefreshInterval: null,
             syncStatusInterval: null,
             backendHealthInterval: null,
+            authEnabled: false,
             syncStatus: {
                 last_sync_time: null,
                 status: 'Never',
@@ -12,15 +15,21 @@ Vue.createApp({
                 failed_agents_count: 0,
                 error_message: null
             },
+            
             backendHealth: {
                 status: 'checking',
                 lastCheck: null,
                 error: null
             },
-            isDarkTheme: true
+            isDarkTheme: true,
+              
         };
     },
+
     methods: {
+        isActivePage(path) {
+            return window.location.pathname === path;
+          },
         async fetchBackendHealth() {
             try {
                 const response = await fetch('/api/backend-health');
@@ -121,6 +130,18 @@ Vue.createApp({
         // Load theme preference
         this.loadTheme();
 
+ 
+        console.log('1. this.$el:', this.$el);
+        console.log('2. this.$el.outerHTML:', this.$el.outerHTML);
+        console.log('3. this.$el.dataset:', this.$el.dataset);
+        console.log('4. Все data-атрибуты:', Object.keys(this.$el.dataset));
+        console.log('5. Значение authEnabled:', this.$el.dataset.authEnabled);
+        
+        // Пробуем разные варианты доступа
+        console.log('6. getAttribute:', this.$el.getAttribute('data-auth-enabled'));
+        
+        this.authEnabled = this.$el.dataset.authEnabled === 'true';
+        console.log('7. Итоговое authEnabled:', this.authEnabled);
         // Fetch backend health immediately and every 10 seconds
         this.fetchBackendHealth();
         this.backendHealthInterval = setInterval(() => {
@@ -144,4 +165,5 @@ Vue.createApp({
             clearInterval(this.backendHealthInterval);
         }
     }
+    
 }).mount('#app2');

@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 
+import functools
 import json
 import logging
 import os
 import re
+import secrets
 import time
+import urllib.parse
 from datetime import datetime, timezone
 
 import parsers
 import requests
 import sqlalchemy as sa
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   send_from_directory, session, url_for)
 from models import (Agent, AgentDynBlock, AuditLog, CommandHistory, Database,
                     DownstreamServer, DynBlockRule, Group, Rule,
-                    RuleCommandTemplate, SyncStatus, TopClient, TopQuery,
+                    RuleCommandTemplate, SyncStatus, TopClient, TopQuery, User,
                     utc_now)
 from settings import settings
 from sqlalchemy.orm import joinedload
@@ -47,7 +51,20 @@ def create_app():
     """
     global db, victoria_metrics_exporter
 
+
+
     flask_app = Flask(__name__)
+
+    flask_app.jinja_env.variable_start_string = '{{{'
+    flask_app.jinja_env.variable_end_string = '}}}'
+
+    # Остальные настройки (опционально)
+    flask_app.jinja_env.block_start_string = '{%'
+    flask_app.jinja_env.block_end_string = '%}'
+    flask_app.jinja_env.comment_start_string = '{#'
+    flask_app.jinja_env.comment_end_string = '#}'
+
+    flask_app.secret_key = settings.SECRET_KEY
 
     try:
         # Initialize database if not already done (per-worker initialization)
@@ -71,6 +88,40 @@ def create_app():
 
 
 app = create_app()
+
+# In-memory cache for the OIDC discovery document (fetched once per process)
+_oidc_config_cache = None
+
+
+def _get_oidc_config():
+    """Fetch (and cache) the OIDC provider discovery document."""
+    global _oidc_config_cache
+    if _oidc_config_cache is None:
+        discovery_url = settings.OIDC_PROVIDER_URL.rstrip('/') + '/.well-known/openid-configuration'
+        resp = requests.get(discovery_url, timeout=10)
+        resp.raise_for_status()
+        _oidc_config_cache = resp.json()
+    return _oidc_config_cache
+
+
+def login_required(f):
+    """Decorator that enforces authentication.
+
+    Behaviour depends on settings:
+    - Both AUTH_ENABLED and OIDC_ENABLED are False → no auth, pass through.
+    - Otherwise → require an authenticated Flask session (user_id set by local
+      login or OIDC callback).  Unauthenticated requests are redirected to
+      /login.
+    """
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+            # Authentication is completely disabled – let every request through.
+            return f(*args, **kwargs)
+        if not session.get('user_id'):
+            return redirect(url_for('login', next=request.path))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def extract_uuid_from_adddynblocks(command):
@@ -96,22 +147,22 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
     5. The order of the data entry rules is not important.
     """
     logger.info(f"=== STARTING SYNC for agent {agent_name} ===")
-    
+
     # Get the existing agent rules
     existing_rules = session.query(Rule).filter_by(agent_name=agent_name).all()
     logger.info(f"Found {len(existing_rules)} existing rules in DB")
-    
+
     # Create a lookup dictionary by UUID (primary identifier)
     existing_rules_by_uuid = {rule.uuid: rule for rule in existing_rules if rule.uuid}
     logger.info(f"UUID lookup map: {len(existing_rules_by_uuid)} entries")
-    
+
     stats = {
         'added': 0,
         'updated': 0,
         'unchanged': 0,
         'deleted': 0
     }
-    
+
     # If there is no input data, we delete all agent rules.
     if not parsed_rules:
         logger.warning(f"No rules to sync for agent {agent_name}")
@@ -121,20 +172,20 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
             stats['deleted'] += 1
     else:
         logger.info(f"Processing {len(parsed_rules)} rules from input")
-        
+
         # A set of UUIDs from the input data to determine the rules to be removed
         input_uuids = set()
-        
+
         # We process each rule from the input data
         for rule_data in parsed_rules:
             rule_uuid = rule_data.get('uuid')
-            
+
             # Skip rules without UUIDs (shouldn't occur, but just in case)
             if not rule_uuid:
                 logger.warning(f"Rule without UUID, skipping: {rule_data}")
                 continue
             input_uuids.add(rule_uuid)
-            
+
             new_rule = Rule(
                 agent_name=agent_name,
                 rule_id=rule_data.get('id'),
@@ -160,7 +211,7 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
                 session.add(new_rule)
                 stats['added'] += 1
                 logger.debug(f"New rule {rule_uuid} added")
-        
+
         # We delete rules that are in the database but are not in the input data.
         for rule in existing_rules:
             if rule.uuid and rule.uuid not in input_uuids:
@@ -184,7 +235,7 @@ def _update_rule_if_changed(existing_rule, new_rule):
     """
     fields_to_compare = ['rule_id', 'name', 'matches', 'rule', 'action', 'creation_order']
     changed = False
-    
+
     for field in fields_to_compare:
         old_value = getattr(existing_rule, field)
         new_value = getattr(new_rule, field)
@@ -530,6 +581,7 @@ def update_agent_v2(session, agent_id, new_status, new_version, new_service_time
 
 
 @app.route('/api/startsync', methods=['GET'])
+@login_required
 async def sync_data():
     logger.info("Start syncer")
     session = db.get_session()
@@ -857,70 +909,288 @@ def log_audit(action, details=None, ip_address=None):
         logger.error(f'Error in log_audit: {str(e)}')
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Render login page and handle login form submission.
+
+    Behaviour:
+    - If neither AUTH_ENABLED nor OIDC_ENABLED → redirect to dashboard.
+    - If OIDC_ENABLED and AUTH_ENABLED → show both local form and SSO button.
+    - If only OIDC_ENABLED → redirect straight to OIDC provider.
+    - If only AUTH_ENABLED → show local form only.
+    """
+    # Already logged in
+    if session.get('user_id'):
+        return redirect(url_for('dashboard'))
+
+    # Auth completely disabled
+    if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+        return redirect(url_for('dashboard'))
+
+    # Only OIDC enabled – skip the login page and go straight to SSO
+    if settings.OIDC_ENABLED and not settings.AUTH_ENABLED:
+        return redirect(url_for('oidc_initiate'))
+
+    error = None
+    if request.method == 'POST' and settings.AUTH_ENABLED:
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        db_session = db.get_session()
+        try:
+            user = db_session.query(User).filter_by(username=username, is_active=True).first()
+            if user and user.check_password(password):
+                session.clear()
+                session['user_id'] = user.id
+                session['username'] = user.username
+                log_audit('LOGIN', f'User "{username}" logged in')
+                next_url = request.args.get('next') or url_for('dashboard')
+                return redirect(next_url)
+            error = 'Invalid username or password.'
+        finally:
+            db_session.close()
+
+    return render_template(
+        'login.html',
+        error=error,
+        auth_enabled=settings.AUTH_ENABLED,
+        oidc_enabled=settings.OIDC_ENABLED,
+    )
+
+
+@app.route('/auth/oidc')
+def oidc_initiate():
+    """Begin the OIDC authorization-code flow.
+
+    Generates a random ``state`` token (stored in the session as a CSRF guard),
+    then redirects the browser to the provider's authorization endpoint.
+    """
+    if not settings.OIDC_ENABLED:
+        return redirect(url_for('login'))
+    try:
+        oidc_cfg = _get_oidc_config()
+    except Exception as e:
+        logger.error(f'OIDC discovery failed: {e}')
+        return render_template('login.html', error='SSO provider is unavailable. Please try again later.',
+                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 503
+
+    state = secrets.token_urlsafe(32)
+    session['oidc_state'] = state
+    # Remember where to return the user after login
+    session['oidc_next'] = request.args.get('next', url_for('dashboard'))
+
+    params = {
+        'response_type': 'code',
+        'client_id': settings.OIDC_CLIENT_ID,
+        'redirect_uri': settings.OIDC_REDIRECT_URI,
+        'scope': settings.OIDC_SCOPES,
+        'state': state,
+    }
+    auth_url = oidc_cfg['authorization_endpoint'] + '?' + urllib.parse.urlencode(params)
+    return redirect(auth_url)
+
+
+@app.route('/auth/callback')
+def oidc_callback():
+    """Handle the OIDC provider redirect after authentication.
+
+    Steps:
+    1. Verify the ``state`` parameter matches the session (CSRF check).
+    2. Exchange the authorization ``code`` for tokens.
+    3. Call the ``userinfo`` endpoint with the access token.
+    4. Optionally verify group membership (``OIDC_REQUIRED_GROUP``).
+    5. Set the session and redirect the user.
+    """
+    if not settings.OIDC_ENABLED:
+        return redirect(url_for('login'))
+
+    # CSRF state check
+    returned_state = request.args.get('state', '')
+    if not returned_state or returned_state != session.pop('oidc_state', None):
+        logger.warning('OIDC callback received invalid state – possible CSRF')
+        return render_template('login.html', error='Authentication failed: invalid state.',
+                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+
+    error_param = request.args.get('error')
+    if error_param:
+        error_desc = request.args.get('error_description', error_param)
+        logger.warning(f'OIDC provider returned error: {error_desc}')
+        return render_template('login.html', error=f'SSO error: {error_desc}',
+                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 401
+
+    code = request.args.get('code')
+    if not code:
+        return render_template('login.html', error='No authorization code received from SSO provider.',
+                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+
+    try:
+        oidc_cfg = _get_oidc_config()
+
+        # Exchange code for tokens
+        token_resp = requests.post(
+            oidc_cfg['token_endpoint'],
+            data={
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': settings.OIDC_REDIRECT_URI,
+                'client_id': settings.OIDC_CLIENT_ID,
+                'client_secret': settings.OIDC_CLIENT_SECRET,
+            },
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+        access_token = token_data.get('access_token')
+
+        if not access_token:
+            raise ValueError('No access_token in token response')
+
+        # Fetch user info
+        userinfo_resp = requests.get(
+            oidc_cfg['userinfo_endpoint'],
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10,
+        )
+        userinfo_resp.raise_for_status()
+        userinfo = userinfo_resp.json()
+
+    except Exception as e:
+        logger.error(f'OIDC token/userinfo exchange failed: {e}')
+        return render_template('login.html', error='SSO authentication failed. Please try again.',
+                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 502
+
+    # Group membership check
+    if settings.OIDC_REQUIRED_GROUP:
+        user_groups = userinfo.get(settings.OIDC_GROUPS_CLAIM, [])
+        if isinstance(user_groups, str):
+            user_groups = [user_groups]
+        if settings.OIDC_REQUIRED_GROUP not in user_groups:
+            logger.warning(
+                f'OIDC login denied for "{userinfo.get("sub")}" – '
+                f'missing required group "{settings.OIDC_REQUIRED_GROUP}"'
+            )
+            return render_template(
+                'login.html',
+                error=f'Access denied: your account must belong to the '
+                      f'"{settings.OIDC_REQUIRED_GROUP}" group.',
+                auth_enabled=settings.AUTH_ENABLED,
+                oidc_enabled=settings.OIDC_ENABLED,
+            ), 403
+
+    # Identify the user by a stable sub/preferred_username
+    oidc_username = (
+        userinfo.get('preferred_username')
+        or userinfo.get('email')
+        or userinfo.get('sub', 'oidc-user')
+    )
+
+    session.clear()
+    session['user_id'] = userinfo.get('sub', oidc_username)
+    session['username'] = oidc_username
+    session['auth_method'] = 'oidc'
+
+    log_audit('LOGIN_OIDC', f'OIDC user "{oidc_username}" logged in')
+    next_url = session.pop('oidc_next', url_for('dashboard'))
+    return redirect(next_url)
+
+
+@app.route('/logout')
+def logout():
+    """Log the current user out and redirect to login page"""
+    username = session.get('username', 'unknown')
+    auth_method = session.get('auth_method', 'local')
+    session.clear()
+    log_audit('LOGOUT', f'User "{username}" logged out (method: {auth_method})')
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def dashboard():
     """Render the main console page"""
-    return render_template('dashboard.html')
 
-# @app.route('/dashboard')
-# def dashboard2():
-#     """Render the main console page"""
-#     return render_template('dashboard.html')
+    return render_template('dashboard.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/agents')
+@login_required
 def agents():
     """Render the agents management page"""
-    return render_template('index.html')
+    return render_template('index.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/agents/<int:rule_uuid>')
+@login_required
 def agents_id(rule_uuid: int):
     """Render the agents management page"""
-    return render_template('index.html')
+    return render_template('index.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/rules')
+@login_required
 def rules():
     """Render the rules page"""
-    return render_template('rules.html')
+    return render_template('rules.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/rules/<string:rule_uuid>')
+@login_required
 def rules_by_uuid(rule_uuid: str):
     """Render the rules page filtered to a specific rule by UUID"""
-    return render_template('rules.html')
+    return render_template('rules.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/summary')
+@login_required
 def summary():
     """Render the summary page"""
-    return render_template('summary.html')
+    return render_template('summary.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
+
 
 
 @app.route('/dynblock-rules')
+@login_required
 def dynblock_rules_page():
     """Render the DynBlock rules management page"""
-    return render_template('dynblock_rules.html')
+    return render_template('dynblock_rules.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 
 @app.route('/dynblock-rules/<string:rule_uuid>')
+@login_required
 def dynblock_by_uuid(rule_uuid: str):
     """Render the DynBlock rules management page"""
-    return render_template('dynblock_rules.html')
+    return render_template('dynblock_rules.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
+
 
 
 @app.route('/audit')
+@login_required
 def audit_page():
     """Render the audit logs page"""
-    return render_template('audit.html')
-
+    return render_template('audit.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
 @app.route('/dashboard')
+@login_required
 def dashboard_page():
     """Render the dashboard page"""
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', 
+                         auth_enabled=settings.AUTH_ENABLED)
 
+@app.route('/users')
+@login_required
+def users_page():
+    """Render the user management page"""
+    return render_template('users.html', 
+                         auth_enabled=settings.AUTH_ENABLED, 
+                         current_user=session.get('username'))
 
 @app.route('/static/<path:filename>')
 def static_files(filename):
@@ -938,6 +1208,7 @@ def server_not_work(e):
 
 
 @app.route('/api/rules', methods=['GET'])
+@login_required
 def get_all_rules():
     """
     Get all rules from database
@@ -979,6 +1250,7 @@ def get_all_rules():
 
 
 @app.route('/api/rules/<int:rule_id>', methods=['DELETE'])
+@login_required
 def delete_rule(rule_id):
     """Delete a rule by its database ID"""
     session = db.get_session()
@@ -1018,6 +1290,7 @@ def delete_rule(rule_id):
 
 
 @app.route('/api/rules/<path:rule_uuid>', methods=['GET'])
+@login_required
 def get_all_rules_id(rule_uuid: str):
     """
     Get all rules from database
@@ -1085,6 +1358,7 @@ def get_all_rules_id(rule_uuid: str):
 
 
 @app.route('/api/agents/rules', methods=['GET'])
+@login_required
 def get_agents_rules():
     """Get rules count for all agents"""
     session = db.get_session()
@@ -1146,6 +1420,7 @@ def get_agents_rules():
 
 
 @app.route('/api/agents/servers', methods=['GET'])
+@login_required
 def get_agents_servers():
     """Get downstream servers for all agents"""
     session = db.get_session()
@@ -1193,6 +1468,7 @@ def get_agents_servers():
 
 
 @app.route('/api/agents/topclients', methods=['GET'])
+@login_required
 def get_agents_topclients():
     """Get top clients for all agents"""
     session = db.get_session()
@@ -1239,6 +1515,7 @@ def get_agents_topclients():
 
 
 @app.route('/api/agents/topqueries', methods=['GET'])
+@login_required
 def get_agents_topqueries():
     """Get top queries for all agents"""
     session = db.get_session()
@@ -1286,6 +1563,7 @@ def get_agents_topqueries():
 
 
 @app.route('/api/sync-status', methods=['GET'])
+@login_required
 def get_sync_status():
     """Get background sync status"""
     session = db.get_session()
@@ -1320,6 +1598,7 @@ def get_sync_status():
 
 
 @app.route('/metrics', methods=['GET'])
+@login_required
 def get_metrics():
     """Get Prometheus-formatted metrics for all agents"""
     session = db.get_session()
@@ -1355,6 +1634,7 @@ def get_metrics():
 
 
 @app.route('/api/backend-health', methods=['GET'])
+@login_required
 def get_backend_health():
     """Health check endpoint for the console.py backend"""
     try:
@@ -1381,6 +1661,7 @@ def get_backend_health():
 
 
 @app.route('/api/agents', methods=['GET'])
+@login_required
 def get_agents():
     """Get list of agents with their status from database"""
     session = db.get_session()
@@ -1417,6 +1698,7 @@ def get_agents():
 
 
 @app.route('/api/agents/<int:agent_id>', methods=['GET'])
+@login_required
 def get_agent_id(agent_id):
 
     session = db.get_session()
@@ -1453,6 +1735,7 @@ def get_agent_id(agent_id):
 
 
 @app.route('/api/agents', methods=['POST'])
+@login_required
 def create_agent():
     """Create a new agent"""
     data = request.get_json()
@@ -1502,6 +1785,7 @@ def create_agent():
 
 
 @app.route('/api/agents/<int:agent_id>', methods=['PUT'])
+@login_required
 def update_agent(agent_id):
     """Update an existing agent"""
     data = request.get_json()
@@ -1530,12 +1814,11 @@ def update_agent(agent_id):
             agent.group_id = data['group_id']
         if 'is_active' in data:
             agent.is_active = bool(data['is_active'])
-            
 
         # Log status change to history if is_active was changed
         status_changed = False
         if 'is_active' in data and old_is_active != agent.is_active:
-            
+
             status_changed = True
             status_text = "available" if agent.is_active else "disabled"
             if not agent.is_active:
@@ -1575,6 +1858,7 @@ def update_agent(agent_id):
 
 
 @app.route('/api/agents/<int:agent_id>', methods=['DELETE'])
+@login_required
 def delete_agent(agent_id):
     """Delete an agent (hard delete from database)"""
     session = db.get_session()
@@ -1603,6 +1887,7 @@ def delete_agent(agent_id):
 
 
 @app.route('/api/command', methods=['POST'])
+@login_required
 def execute_command():
     """Execute a command on a specific agent"""
     data = request.get_json()
@@ -1706,6 +1991,7 @@ def execute_command():
 
 
 @app.route('/api/command/broadcast', methods=['POST'])
+@login_required
 def execute_broadcast_command():
     """Execute a command on all agents or agents in a specific group"""
     data = request.get_json()
@@ -1855,6 +2141,7 @@ def execute_broadcast_command():
 
 
 @app.route('/api/history', methods=['GET'])
+@login_required
 def get_history():
     """Get command execution history"""
     session = db.get_session()
@@ -1890,6 +2177,7 @@ def get_history():
 
 
 @app.route('/api/history', methods=['DELETE'])
+@login_required
 def clear_history():
     """Clear all command execution history"""
     session = db.get_session()
@@ -1916,6 +2204,7 @@ def clear_history():
 
 
 @app.route('/api/history/autocomplete', methods=['GET'])
+@login_required
 def get_autocomplete_suggestions():
     """Get autocomplete suggestions from command history"""
     session = db.get_session()
@@ -1961,6 +2250,7 @@ def get_autocomplete_suggestions():
 
 
 @app.route('/api/commands')
+@login_required
 def get_commands():
     """Get list of available dnsdist commands from distcommands.txt"""
     try:
@@ -1989,6 +2279,7 @@ def get_commands():
 
 
 @app.route('/api/groups', methods=['GET'])
+@login_required
 def get_groups():
     """Get all groups"""
     session = db.get_session()
@@ -2010,6 +2301,7 @@ def get_groups():
 
 
 @app.route('/api/groups', methods=['POST'])
+@login_required
 def create_group():
     """Create a new group"""
     data = request.get_json()
@@ -2045,6 +2337,7 @@ def create_group():
 
 
 @app.route('/api/groups/<int:group_id>', methods=['PUT'])
+@login_required
 def update_group(group_id):
     """Update an existing group"""
     data = request.get_json()
@@ -2082,6 +2375,7 @@ def update_group(group_id):
 
 
 @app.route('/api/groups/<int:group_id>', methods=['DELETE'])
+@login_required
 def delete_group(group_id):
     """Delete a group"""
     session = db.get_session()
@@ -2111,6 +2405,7 @@ def delete_group(group_id):
 
 
 @app.route('/api/dynblock-rules/<path:rule_uuid>', methods=['GET'])
+@login_required
 def get_all_dynblock_id(rule_uuid: str):
     """
     Get all rules from database
@@ -2135,6 +2430,7 @@ def get_all_dynblock_id(rule_uuid: str):
 
 
 @app.route('/api/dynblock-rules', methods=['GET'])
+@login_required
 def get_dynblock_rules():
     """Get all DynBlock rules"""
     session = db.get_session()
@@ -2157,6 +2453,7 @@ def get_dynblock_rules():
 
 
 @app.route('/api/dynblock-rules', methods=['POST'])
+@login_required
 def create_dynblock_rule():
     """Create a new DynBlock rule"""
     session = db.get_session()
@@ -2228,6 +2525,7 @@ def create_dynblock_rule():
 
 
 @app.route('/api/dynblock-rules/<int:rule_id>', methods=['DELETE'])
+@login_required
 def delete_dynblock_rule(rule_id):
     """Delete a DynBlock rule"""
     session = db.get_session()
@@ -2267,6 +2565,7 @@ def delete_dynblock_rule(rule_id):
 
 
 @app.route('/api/dynblock-rules/<int:rule_id>', methods=['PATCH'])
+@login_required
 def update_dynblock_rule(rule_id):
     """Update a DynBlock rule (e.g., toggle is_active, edit name, description, rule_command, group_id)"""
     session = db.get_session()
@@ -2359,6 +2658,7 @@ def update_dynblock_rule(rule_id):
 
 
 @app.route('/api/rule-command-templates', methods=['GET'])
+@login_required
 def get_rule_command_templates():
     """Get all active rule command templates"""
     session = db.get_session()
@@ -2380,6 +2680,7 @@ def get_rule_command_templates():
 
 
 @app.route('/api/rule-command-templates', methods=['POST'])
+@login_required
 def create_rule_command_template():
     """Create a new rule command template"""
     session = db.get_session()
@@ -2428,6 +2729,7 @@ def create_rule_command_template():
 
 
 @app.route('/api/rule-command-templates/<int:template_id>', methods=['PATCH'])
+@login_required
 def update_rule_command_template(template_id):
     """Update an existing rule command template"""
     session = db.get_session()
@@ -2482,6 +2784,7 @@ def update_rule_command_template(template_id):
 
 
 @app.route('/api/rule-command-templates/<int:template_id>', methods=['DELETE'])
+@login_required
 def delete_rule_command_template(template_id):
     """Delete a rule command template"""
     session = db.get_session()
@@ -2515,6 +2818,7 @@ def delete_rule_command_template(template_id):
 
 
 @app.route('/api/audit', methods=['GET'])
+@login_required
 def get_audit_logs():
     """Get audit logs with pagination"""
     session = db.get_session()
@@ -2565,6 +2869,7 @@ def get_audit_logs():
 
 
 @app.route('/api/audit/cleanup', methods=['DELETE'])
+@login_required
 def cleanup_old_audit_logs():
     """Delete audit logs older than 3 days"""
     session = db.get_session()
@@ -2598,6 +2903,134 @@ def cleanup_old_audit_logs():
         }), 500
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# User management API
+# ---------------------------------------------------------------------------
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+def get_users():
+    """Get all users"""
+    db_session = db.get_session()
+    try:
+        users = db_session.query(User).order_by(User.id.asc()).all()
+        return jsonify({'success': True, 'users': [u.to_dict() for u in users]})
+    except Exception as e:
+        logger.error(f'Error fetching users: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/users', methods=['POST'])
+@login_required
+def create_user():
+    """Create a new user"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    is_active = data.get('is_active', True)
+
+    if not username:
+        return jsonify({'success': False, 'error': 'Username is required'}), 400
+    if not password:
+        return jsonify({'success': False, 'error': 'Password is required'}), 400
+
+    db_session = db.get_session()
+    try:
+        if db_session.query(User).filter_by(username=username).first():
+            return jsonify({'success': False, 'error': 'Username already exists'}), 400
+        user = User(username=username, is_active=bool(is_active))
+        user.set_password(password)
+        db_session.add(user)
+        db_session.commit()
+        log_audit('CREATE_USER', f'User "{username}" created by "{session.get("username")}"')
+        return jsonify({'success': True, 'user': user.to_dict()}), 201
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'Error creating user: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@login_required
+def update_user(user_id):
+    """Update an existing user"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    db_session = db.get_session()
+    try:
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        if 'username' in data:
+            new_username = (data['username'] or '').strip()
+            if not new_username:
+                return jsonify({'success': False, 'error': 'Username cannot be empty'}), 400
+            existing = db_session.query(User).filter(
+                User.username == new_username, User.id != user_id
+            ).first()
+            if existing:
+                return jsonify({'success': False, 'error': 'Username already exists'}), 400
+            user.username = new_username
+
+        if 'password' in data and data['password']:
+            user.set_password(data['password'])
+
+        if 'is_active' in data:
+            user.is_active = bool(data['is_active'])
+
+        db_session.commit()
+        log_audit('UPDATE_USER', f'User id={user_id} updated by "{session.get("username")}"')
+        return jsonify({'success': True, 'user': user.to_dict()})
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'Error updating user: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@login_required
+def delete_user(user_id):
+    """Delete a user"""
+    db_session = db.get_session()
+    try:
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Prevent deleting the last active user
+        active_count = db_session.query(User).filter_by(is_active=True).count()
+        if user.is_active and active_count <= 1:
+            return jsonify({'success': False, 'error': 'Cannot delete the last active user'}), 400
+
+        # Prevent users from deleting themselves
+        if user.id == session.get('user_id'):
+            return jsonify({'success': False, 'error': 'Cannot delete your own account'}), 400
+
+        username = user.username
+        db_session.delete(user)
+        db_session.commit()
+        log_audit('DELETE_USER', f'User "{username}" deleted by "{session.get("username")}"')
+        return jsonify({'success': True, 'message': f'User "{username}" deleted successfully'})
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'Error deleting user: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
 
 
 def main():

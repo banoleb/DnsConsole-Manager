@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+
+<body>
+    <!-- Navbar -->
+    <div id="app2">
+        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
+            {% include 'components/navbar.html' %}
+        </nav>
+    </div>
+    <div id="app">
+        <!-- Main Container -->
+        <div class="container">
+            <!-- Add User Card -->
+            <div class="card mb-4">
+                <div class="card-header primary">
+                    <h6>{{ editingUser ? 'Edit User' : 'Add New User' }}</h6>
+                </div>
+                <div class="card-body">
+                    <div v-if="formError" class="alert alert-danger mb-3">{{ formError }}</div>
+                    <div v-if="formSuccess" class="alert alert-success mb-3">{{ formSuccess }}</div>
+                    <form @submit.prevent="submitForm">
+                        <table>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div class="mb-3">
+                                            <label class="form-label">Username</label>
+                                            <input
+                                                class="form-control"
+                                                type="text"
+                                                v-model="form.username"
+                                                placeholder="Enter username"
+                                                required
+                                            >
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="mb-3">
+                                            <label class="form-label">
+                                                Password
+                                                <span v-if="editingUser" class="text-muted" style="font-size:0.85em"> (leave blank to keep current)</span>
+                                            </label>
+                                            <input
+                                                class="form-control"
+                                                type="password"
+                                                v-model="form.password"
+                                                placeholder="Enter password"
+                                                :required="!editingUser"
+                                            >
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <div class="mb-3">
+                                            <label class="form-label">
+                                                <input type="checkbox" v-model="form.is_active" style="margin-right:0.4rem;">
+                                                Active
+                                            </label>
+                                        </div>
+
+                                    </td>
+                                    <td>
+                                        <div style="display:flex; gap:0.5rem;">
+                                            <button type="submit" class="btn" :disabled="saving">
+                                                {{ saving ? 'Saving...' : (editingUser ? 'Update User' : 'Add User') }}
+                                            </button>
+                                            <button v-if="editingUser" type="button" class="btn" @click="cancelEdit">Cancel</button>
+                                        </div>
+
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                
+
+                    </form>
+
+
+
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="card">
+                <div class="card-header primary">
+                    <h6>Users</h6>
+                </div>
+                <div class="card-body">
+                    <div v-if="loading" class="text-center"><p>Loading users...</p></div>
+                    <div v-else-if="users.length === 0" class="text-center">
+                        <p class="text-muted">No users found</p>
+                    </div>
+                    <div v-else class="table-responsive">
+                        <table class="rules-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">ID</th>
+                                    <th style="width: 25%;">Username</th>
+                                    <th style="width: 20%;">Active</th>
+                                    <th style="width: 20%;">Created</th>
+                                    <th style="width: 20%;">Updated</th>
+                                    <th style="width: 10%;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="user in users" :key="user.id">
+                                    <td>{{ user.id }}</td>
+                                    <td>
+                                        {{ user.username }}
+                                        <span v-if="user.username === currentUser" class="text-muted" style="font-size:0.8em"> (you)</span>
+                                    </td>
+                                    <td>
+                                        <span :style="{ color: user.is_active ? '#4caf50' : '#f44336' }">
+                                            {{ user.is_active ? 'Yes' : 'No' }}
+                                        </span>
+                                    </td>
+                                    <td>{{ formatDateTime(user.created_at) }}</td>
+                                    <td>{{ formatDateTime(user.updated_at) }}</td>
+                                    <td>
+                                        <button class="btn btn-sm" @click="startEdit(user)" style="margin-right:0.3rem;">Edit</button>
+                                        <button
+                                            class="btn btn-danger btn-sm"
+                                            @click="deleteUser(user)"
+                                            :disabled="user.username === currentUser"
+                                            :title="user.username === currentUser ? 'Cannot delete your own account' : ''"
+                                        >Delete</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const CURRENT_USER = "{{ current_user }}";
+</script>
+<script src="{{{ url_for('static', filename='js/users.js') }}}"></script>
+<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
+</body>
+</html>

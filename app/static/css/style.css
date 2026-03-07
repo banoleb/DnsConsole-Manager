@@ -473,6 +473,10 @@ a:link {
     color: #fff;
 }
 
+.badge-secondary-secondary {
+    background-color: #44505a;
+    color: #fff;
+}
 .badge-info {
     background-color: #0dcaf0;
     color: #000;
