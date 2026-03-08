@@ -139,6 +139,9 @@ Vue.createApp({
         getGroupDynblockRules(groupId) {
             return this.dynblockRules.filter(r => r.group_id === groupId);
         },
+        getGroupDynblockRulesAll() {
+            return this.dynblockRules.filter(r => !r.group_id);
+        },
         getStatusClass(status) {
             if (status === 'online') return 'status-online';
             if (status === 'offline') return 'status-offline';

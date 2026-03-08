@@ -4,14 +4,12 @@
     {% include 'components/head.html' %}
     <title>Dnsdist Web Console - Dashboard</title>
 </head>
-{% raw %}
+
 <body>
     <!-- Navbar -->
     <div id="app2">
-        <nav class="navbar">
-            {% endraw %}
+        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
             {% include 'components/navbar.html' %}
-            {% raw %}
         </nav>
     </div>
 
@@ -19,7 +17,7 @@
         <div class="container">
 
             <!-- Summary Stat Cards -->
-            <div class="dashboard-stats-grid">
+            <div class="dashboard-stats-grid" style="padding-top: 50px;">
                 <div class="stat-card">
                     <div class="stat-icon">🖥️</div>
                     <div class="stat-value">{{ totalAgents }}</div>
@@ -112,7 +110,7 @@
                                                     v-for="rule in getAgentRules(agent.name)"
                                                     :key="rule.id"
                                                     class="topo-rule-chip"
-                                                    :title="rule.rule + ' → ' + rule.action"
+                                                    :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches"
                                                 >
                                                     <span class="topo-rule-name">{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</span>
                                                 </div>
@@ -148,7 +146,7 @@
                                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
                                                 {{ agent.name }}
                                             </div>
-                                    
+
                                             <div class="topo-agent-url"><a :href="agent.url+'/health'">{{ agent.url }}</a></div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-rules">
@@ -161,14 +159,14 @@
                                                     v-for="rule in getAgentRules(agent.name)"
                                                     :key="rule.id"
                                                     class="topo-rule-chip"
-                                                    :title="rule.rule + ' → ' + rule.action"
+                                                    :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches"
                                                 >
                                                 <div  v-if="rule.has_synced === 1">
                                                 <span class="topo-dynblock-chip"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }} (DynBlock Rules)</a></span>
                                                 </div>
                                                 <div  v-if="rule.has_synced === 0">
                                                 <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
-                                                </div>                                               
+                                                </div>
                                             </div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-servers">
@@ -192,7 +190,7 @@
 
                                     <!-- DynBlock Rules for this group -->
                                     <div v-if="getGroupDynblockRules(group.id).length > 0" class="topo-dynblock-section">
-                                        <div class="topo-dynblock-label">🛡️ DynBlock Rules</div>
+                                        <div class="topo-dynblock-label">🛡️ DynBlock Rules for {{ group.name }}</div>
                                         <div class="topo-dynblock-list">
                                             <div
                                                 v-for="dr in getGroupDynblockRules(group.id)"
@@ -200,6 +198,19 @@
                                                 class="topo-dynblock-chip"
                                                 :class="{ 'topo-dynblock-inactive': !dr.is_active }"
                                                 :title="dr.rule_command"
+                                            >
+                                            <a style="color: coral;" :href="'/dynblock-rules/' +  dr.rule_uuid" > {{ dr.name || dr.rule_uuid }}</a>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div lass="topo-dynblock-section">
+                                        <div class="topo-dynblock-label">🛡️ DynBlock Rules For All groups</div>
+                                        <div class="topo-dynblock-list">
+                                            <div
+                                                v-for="dr in getGroupDynblockRulesAll()"
+                                                class="topo-dynblock-chip"
+                                                :class="{ 'topo-dynblock-inactive': !dr.is_active }"
                                             >
                                             <a style="color: coral;" :href="'/dynblock-rules/' +  dr.rule_uuid" > {{ dr.name || dr.rule_uuid }}</a>
 
@@ -266,8 +277,8 @@
 
         </div>
     </div>
-{% endraw %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+
+<script src="{{{  url_for('static', filename='js/dashboard.js') }}}"></script>
+<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
 </body>
 </html>

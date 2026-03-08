@@ -11,6 +11,7 @@ from settings import settings
 from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String,
                         Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from werkzeug.security import check_password_hash, generate_password_hash
 
 Base = declarative_base()
 
@@ -606,6 +607,36 @@ class SyncStatus(Base, DateTimeSerializableMixin):
         }
 
 
+class User(Base, DateTimeSerializableMixin):
+    """Model for web console users"""
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(255), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    def set_password(self, password):
+        """Hash and store the user password"""
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        """Verify a password against the stored hash"""
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        """Convert user to dictionary (without password hash)"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'is_active': self.is_active,
+            'created_at': self._serialize_datetime(self.created_at),
+            'updated_at': self._serialize_datetime(self.updated_at),
+        }
+
+
 class AuditLog(Base, DateTimeSerializableMixin):
     """Model for audit logging"""
     __tablename__ = 'audit_logs'
@@ -639,8 +670,24 @@ class Database:
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
     def create_tables(self):
-        """Create all tables"""
+        """Create all tables and seed default data"""
         Base.metadata.create_all(bind=self.engine)
+        self._seed_default_admin()
+
+    def _seed_default_admin(self):
+        """Create the default admin user if no users exist"""
+        session = self.SessionLocal()
+        try:
+            if session.query(User).count() == 0:
+                admin = User(username='admin', is_active=True)
+                admin.set_password('admin')
+                session.add(admin)
+                session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def get_session(self):
         """Get a new database session"""

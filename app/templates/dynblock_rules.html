@@ -3,17 +3,15 @@
 <head>
     {% include 'components/head.html' %}
 </head>
-{% raw %}
+
 <body>
     <!-- Navbar -->
     <div id="app2">
-        <nav class="navbar">
-            {% endraw %}
+        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
             {% include 'components/navbar.html' %}
-            {% raw %}
         </nav>
     </div>
-
+    <div style="padding-top: 50px;"></div>
     <div id="app">
         <!-- Main Container -->
         <div class="container">
@@ -424,7 +422,7 @@
                                             <td>
                                                 <div class="mb-3" style="gap: 0.5rem; justify-content: flex-end; ">
                                                 <label class="form-label">
-                                                    Actions 
+                                                    Actions
                                                 </label>
                                                 <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
                                                     <button
@@ -514,8 +512,8 @@
             </div>
         </div>
     </div>
-{% endraw %}
-<script src="{{ url_for('static', filename='js/dynblock_rules.js') }}"></script>
-<script src="{{ url_for('static', filename='js/sync_stat.js') }}"></script>
+
+<script src="{{{ url_for('static', filename='js/dynblock_rules.js') }}}"></script>
+<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
 </body>
 </html>

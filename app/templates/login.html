@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'components/head.html' %}
+</head>
+
+
+<body>
+    <div class="login-container">
+
+        <div class="login-card">
+            {% if error %}
+            <div class="alert-danger">{{{ error }}}</div>
+            {% endif %}
+            <h2>DnsConsole-Manager</h2>
+            <div style="text-align: center;"> <a href="https://github.com/banoleb/dnsdist-webapi"  style="text-decoration: none; color: inherit;">Github:  v0.0.2</a></div>
+
+
+
+            {% if auth_enabled %}
+            <form  method="post" action="{{{ url_for('login') }}}">
+                <div class="form-group">
+                    <label class="form-label" for="username">Username</label>
+                    <input
+                        class="form-control"
+                        type="text"
+                        id="username"
+                        name="username"
+                        autocomplete="username"
+                        required
+                        autofocus
+                    >
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input
+                        class="form-control"
+                        type="password"
+                        id="password"
+                        name="password"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+                <button class="btn-primary-login" type="submit">Sign In</button>
+            </form>
+            {% endif %}
+
+            {% if auth_enabled and oidc_enabled %}
+            <div class="divider">or</div>
+            {% endif %}
+
+            {% if oidc_enabled %}
+            <a class="btn-sso" href="{{{ url_for('oidc_initiate') }}}">
+                🔑 Sign in with SSO
+            </a>
+            {% endif %}
+
+        </div>
+
+    </div>
+</body>
+</html>

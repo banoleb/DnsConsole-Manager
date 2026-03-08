@@ -22,6 +22,7 @@ createApp({
             broadcastOutput: '',
             broadcastTarget: 'all',
             isRefreshing: false,
+            isOneAgentPage: false,
             modals: {
                 help: false,
                 history: false,
@@ -176,15 +177,16 @@ createApp({
                                     pathParts.length === 2 &&
                                     /^\d+$/.test(pathParts[1]);
                 if (pathParts[1]) {
-                    this.expandedAgents[0] = true; 
-                    this.expandedRules[0] = true; 
-                    this.expandedServers[0] = true; 
-                    this.expandedTopClients[0] = true; 
-                    this.expandedTopQueries[0] = true; 
+                    this.expandedAgents[0] = true;
+                    this.expandedRules[0] = true;
+                    this.expandedServers[0] = true;
+                    this.expandedTopClients[0] = true;
+                    this.expandedTopQueries[0] = true;
+                    this.isOneAgentPage = true;
                     this.showActiveOnly = false;
                 }
                 const url = isAgentDetail ? `/api/agents/${pathParts[1]}` : '/api/agents';
-                
+
                 const response = await fetch(url);
                 const data = await response.json();
                 this.agents = data;
@@ -548,7 +550,7 @@ createApp({
                         this.agentOutputs[index] = output;
                     } else {
                         this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n\n${this.escapeHtml(data.result || 'Command executed successfully')}`+'\nCommand: '+command;
-                        
+
                     }
                 } else {
                     this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Error</span>\n\n${this.escapeHtml(data.error || 'Unknown error')}`+'\nCommand: '+command;
