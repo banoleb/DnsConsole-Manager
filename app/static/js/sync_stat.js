@@ -138,19 +138,14 @@ Vue.createApp({
     mounted() {
         // Load theme preference
         this.loadTheme();
-
- 
-        console.log('1. this.$el:', this.$el);
-        console.log('2. this.$el.outerHTML:', this.$el.outerHTML);
-        console.log('3. this.$el.dataset:', this.$el.dataset);
-        console.log('4. Все data-атрибуты:', Object.keys(this.$el.dataset));
-        console.log('5. Значение authEnabled:', this.$el.dataset.authEnabled);
-        
-        // Пробуем разные варианты доступа
-        console.log('6. getAttribute:', this.$el.getAttribute('data-auth-enabled'));
-        
+        // console.log('1. this.$el:', this.$el);
+        // console.log('2. this.$el.outerHTML:', this.$el.outerHTML);
+        // console.log('3. this.$el.dataset:', this.$el.dataset);
+        // console.log('4. Все data-атрибуты:', Object.keys(this.$el.dataset));
+        // console.log('5. Значение authEnabled:', this.$el.dataset.authEnabled);
+        // console.log('6. getAttribute:', this.$el.getAttribute('data-auth-enabled'));
         this.authEnabled = this.$el.dataset.authEnabled === 'true';
-        console.log('7. Итоговое authEnabled:', this.authEnabled);
+        // console.log('7. Итоговое authEnabled:', this.authEnabled);
         // Fetch backend health immediately and every 10 seconds
         this.fetchBackendHealth();
         this.backendHealthInterval = setInterval(() => {

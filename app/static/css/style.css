@@ -927,6 +927,35 @@ sync-progress-fill-never {
     background-color: var(--card-header-bg);
 }
 
+
+.command-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    align-items: center;
+    padding: 12px 0;
+}
+
+.btn-command {
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+    color: #5f6b7a;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-command:hover {
+    background: var(--btn-border);
+    color: var(--text-color);  
+}
+
+.btn-command:active {
+    background: #e2e8f0;
+}
+
 /* Alert */
 .alert {
     padding: 1rem;

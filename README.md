@@ -1,4 +1,4 @@
-# DnsConsole-Manager (beta v0.0.2)
+# DnsConsole-Manager (beta v0.0.3)
 
 ✨`I am actively developing the project and will be glad to receive any contribution.`
 
@@ -218,3 +218,5 @@ pytest test_console.py -v
 - init project
 #### BETA v0.0.2 05.03.2026
 - Minor changes, background sync logic fixed. Action buttons added for rules
+#### BETA v0.0.3 08.03.2026
+- Add session-based authentication, user management, and OIDC SSO to web console

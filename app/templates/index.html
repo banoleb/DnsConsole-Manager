@@ -19,13 +19,31 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label">Broadcast Command to Agents</label>
-                        <button class="btn" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">showRules</button>
-                        <button class="btn" @click="sendBroadcastCommand('showPools()')">showPools</button>
-                        <button class="btn" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">showServers</button>
-                        <button class="btn" @click="sendBroadcastCommand('topClients()')">topClients</button>
-                        <button class="btn" @click="sendBroadcastCommand('topResponses(10)')">topResponses</button>
-                        <button class="btn" @click="sendBroadcastCommand('topResponses(10)')">dumpStats</button>
-
+                        <div class="command-cloud">
+                            <button class="btn-command show" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">
+                                showRules()
+                            </button>
+                            
+                            <button class="btn-command show" @click="sendBroadcastCommand('showPools()')">
+                                showPools()
+                            </button>
+                            
+                            <button class="btn-command show" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">
+                                showServers()
+                            </button>
+                            
+                            <button class="btn-command top" @click="sendBroadcastCommand('topClients()')">
+                                topClients()
+                            </button>
+                            
+                            <button class="btn-command top" @click="sendBroadcastCommand('topResponses(10)')">
+                                topResponses(10)
+                            </button>
+                            
+                            <button class="btn-command dump" @click="sendBroadcastCommand('dumpStats()')">
+                                dumpStats()
+                            </button>
+                        </div>
                         <table border="0" cellpadding="8" cellspacing="0" style="width:100%; padding-top: 10px;">
                             <tr>
                                 <td style="width: 300px;">
@@ -161,12 +179,31 @@
                         <div v-if="expandedAgents[agent.originalIndex]" class="card-body">
                                 <div class="mb-3">
                                     <label class="form-label">Command</label>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">showRules</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showPools()')">showPools</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">showServers</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topClients()')">topClients</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">topResponses</button>
-                                    <button class="btn" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">dumpStats</button>
+                                <div class="command-cloud">
+                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">
+                                        showRules()
+                                    </button>
+                                    
+                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showPools()')">
+                                        showPools()
+                                    </button>
+                                    
+                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">
+                                        showServers()
+                                    </button>
+                                    
+                                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topClients()')">
+                                        topClients()
+                                    </button>
+                                    
+                                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
+                                        topResponses(10)
+                                    </button>
+                                    
+                                    <button class="btn-command dump" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
+                                        dumpStats()
+                                    </button>
+                                </div>
                                     <div style="padding-top: 10px;">
                                     <div class="autocomplete-container">
                                         <div class="input-group">

@@ -121,5 +121,6 @@ createApp({
     },
     mounted() {
         this.loadUsers();
+        // console.log('1. currentUser:', this.currentUser);
     }
 }).mount('#app');
