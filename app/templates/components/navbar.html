@@ -49,4 +49,8 @@
     <a href="https://github.com/banoleb/dnsdist-webapi" class="btn btn-sm" style="text-decoration: none; color: inherit;">v0.0.2</a>
 
 </div>
+<div class="sync-progress-container">
+    <div :class="getBackendStatusClassLoader(backendHealth.status)" :style="{ width: syncProgress + '%' }"></div>
+</div>
+
 

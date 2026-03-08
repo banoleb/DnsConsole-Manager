@@ -88,6 +88,15 @@ Vue.createApp({
                 return 'sync-status-failed';
             }
         },
+        getBackendStatusClassLoader(status) {
+            if (status === 'healthy') {
+                return 'sync-progress-fill-success';
+            } else if (status === 'checking') {
+                return 'sync-progress-fill-never';
+            } else {
+                return 'sync-progress-fill-failed';
+            }
+        },
         getBackendStatusText(status) {
             if (status === 'healthy') {
                 return '✓ Backend OK';

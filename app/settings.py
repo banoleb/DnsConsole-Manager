@@ -44,7 +44,7 @@ class Settings:
     # -------------------------------------------------------------------------
     # Set OIDC_ENABLED=true to activate SSO via any OpenID Connect provider
     # (e.g. Keycloak, Azure AD, Google, Okta, Authentik …).
-    OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
     # Base URL of the OIDC provider.
     # The discovery document is fetched from <OIDC_PROVIDER_URL>/.well-known/openid-configuration
