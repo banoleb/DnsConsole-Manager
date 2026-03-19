@@ -15,13 +15,12 @@
 
     <div id="app">
         <div class="container">
-
             <!-- Summary Stat Cards -->
-            <div class="dashboard-stats-grid" style="padding-top: 50px;">
+            <div class="dashboard-stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon">🖥️</div>
                     <div class="stat-value">{{ totalAgents }}</div>
-                    <div class="stat-label">Total Agents</div>
+                    <div class="stat-label"><a style="color: var(--text-color)" :href="'/agents'" >Agents</a></div>
                     <div class="stat-sub">
                         <span class="stat-online">{{ onlineAgents }} online</span>
                         <span class="stat-offline">{{ offlineAgents }} offline</span>
@@ -38,7 +37,7 @@
                 <div class="stat-card">
                     <div class="stat-icon">📋</div>
                     <div class="stat-value">{{ totalRules }}</div>
-                    <div class="stat-label">Rules</div>
+                    <div class="stat-label"><a style="color: var(--text-color)" :href="'/rules'" >Rules</a></div>
                     <div class="stat-sub">
                         <span class="stat-muted">across all agents</span>
                     </div>
@@ -55,17 +54,22 @@
                 <div class="stat-card">
                     <div class="stat-icon">🛡️</div>
                     <div class="stat-value">{{ totalDynblockRules }}</div>
-                    <div class="stat-label">DynBlock Rules</div>
+                    <div class="stat-label"><a style="color: var(--text-color)" :href="'/dynblock-rules'" >DynBlock Rules</a></div>
                     <div class="stat-sub">
                         <span class="stat-muted">{{ activeDynblockRules }} active</span>
                     </div>
                 </div>
             </div>
-
             <!-- Topology Graphic -->
             <div class="card dashboard-topology-card">
                 <div class="card-header">
-                    <h5>🗺️ Infrastructure Topology</h5>
+                    <h5>🗺️ Infrastructure Topology by Group and Agents</h5>
+                    <div  style="align-content: center;" >
+                        <label class="form-check-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding-left: 10px">
+                            <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
+                            Enable Agents only
+                        </label>
+                    </div>
                     <div style="display:flex; gap:0.5rem; align-items:center;">
                         <button class="btn btn-sm" @click="fetchAll" :disabled="loading">
                             <span :class="{ rotating: loading }">↻</span> Refresh
@@ -77,7 +81,6 @@
                     <div v-else-if="agents.length === 0" class="alert alert-info">No agents configured yet.</div>
                     <div v-else class="topology-scroll-wrapper">
                         <div class="topology-canvas">
-
                             <!-- Ungrouped agents column -->
                             <div v-if="ungroupedAgentsList.length > 0" class="topology-group-col">
                                 <div class="topology-group-box ungrouped">
@@ -90,6 +93,7 @@
                                             :key="agent.id"
                                             class="topology-agent-node"
                                             :class="getAgentNodeClass(agent)"
+                                            
                                         >
                                             <div class="topo-agent-name">
                                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
@@ -117,10 +121,11 @@
 
                                             </div>
                                         </div>
+
+
                                     </div>
                                 </div>
                             </div>
-
                             <!-- Group columns -->
                             <div
                                 v-for="group in groups"
@@ -144,37 +149,45 @@
                                         >
                                             <div class="topo-agent-name">
                                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
-                                                {{ agent.name }}
+                                                {{ agent.name }} <a :href="agent.url+'/health'">{{ agent.url }}</a>
                                             </div>
 
-                                            <div class="topo-agent-url"><a :href="agent.url+'/health'">{{ agent.url }}</a></div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-rules">
-                                                    📋 {{ getRulesCount(agent.name) }} rules
+                                                     📋 {{ getRulesCount(agent.name) }} rules 
                                                 </span>
                                             </div>
                                             <!-- Rules list if any -->
-                                            <div v-if="getRulesCount(agent.name) > 0" class="topo-rules-list">
-                                                <div
-                                                    v-for="rule in getAgentRules(agent.name)"
+                                            <div class="topo-rules-list">
+                                                <div  v-for="rule in getAgentRules(agent.name)">
+                                                <div v-if="rule.has_synced === 1"
+                                                    
                                                     :key="rule.id"
-                                                    class="topo-rule-chip"
-                                                    :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches"
-                                                >
-                                                <div  v-if="rule.has_synced === 1">
-                                                <span class="topo-dynblock-chip"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }} (DynBlock Rules)</a></span>
+                                                    class="topo-dynblock-chip"
+                                                    :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches">
+                                                <span><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }} ⏩ (DynBlock Rules)</a></span>
                                                 </div>
-                                                <div  v-if="rule.has_synced === 0">
-                                                <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
+
+                                            <div v-if="rule.has_synced === 0"
+                                            
+                                            :key="rule.id"
+                                            class="topo-rule-chip"
+                                            :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches">
+                                    
+                                                <div >
+                                                <span ><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
                                                 </div>
+                                            </div>
+
+                                        </div>
                                             </div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-servers">
-                                                    🖥️ {{ getServersCount(agent.name) }} servers
+                                                     🖥️ {{ getServersCount(agent.name) }} servers 
                                                 </span>
                                             </div>
                                             <!-- agentsServers list if any -->
-                                            <div v-if="getServersCount(agent.name) > 0" class="topo-rules-list">
+                                            <div class="topo-rules-list">
                                                 <div
                                                     v-for="servers in getServers(agent.name)"
                                                     :key="servers.id"
@@ -185,11 +198,27 @@
                                                 : {{ servers.address  }} : {{ servers.state  }} : qps : {{ servers.queries  }}
                                                 </div>
                                             </div>
-                                        </div>
+                                            <!-- <div class="topo-agent-url"><a :href="agent.url+'/health'">{{ agent.url }}</a></div> -->
+                                            <div class="topo-agent-badges">
+                                                <span class="topo-badge topo-badge-list">
+                                                     📃 {{ getAccessListCount(agent.name) }} Access list 
+                                                </span>
+                                            </div>
+                                            <div class="topo-rules-list">
+                                                <div
+                                                v-for="rule in getAccessListAll(agent.name)"
+                                                :key="rule.id"
+                                                class="topo-rule-chip"
+                                                :title="rule.name+ ' → '+ 'category:' + rule.category + ' created_at: ' + rule.created_at +' '+ rule.agent_name"
+                                            >
+                                            
+                                                <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'dynblock-rules?tab=access'" >{{ rule.name }} : {{ rule.value }}</a></span>
+                                               
+                                                </div>
+                                            </div>
                                     </div>
-
                                     <!-- DynBlock Rules for this group -->
-                                    <div v-if="getGroupDynblockRules(group.id).length > 0" class="topo-dynblock-section">
+                                    <div  class="topo-dynblock-section">
                                         <div class="topo-dynblock-label">🛡️ DynBlock Rules for {{ group.name }}</div>
                                         <div class="topo-dynblock-list">
                                             <div
@@ -224,12 +253,12 @@
                     </div>
                 </div>
             </div>
-
+            <div class="card-header">
+                <h5>📊 Agent Details</h5>
+            </div>
             <!-- Per-Agent Detail Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h5>📊 Agent Details</h5>
-                </div>
+            <div class="card-body">
+
                 <div class="card-body" style="padding: 0.5rem;">
                     <div v-if="agents.length === 0" class="alert alert-info">No agents found.</div>
                     <div v-else style="overflow-x: auto;">
@@ -257,9 +286,16 @@
                                     </td>
                                     <td>
                                         <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
-                                        <span class="badge" :class="agent.status === 'online' ? 'badge-success' : 'badge-secondary'">
-                                            {{ agent.status }}
-                                        </span>
+                                        <span 
+                                        class="badge" 
+                                        :class="{
+                                            'badge-success': agent.status === 'online',
+                                            'badge-secondary': agent.status === 'offline',
+                                            'badge-disabled': agent.status === 'disabled'
+                                        }"
+                                    >
+                                        {{ agent.status }}
+                                    </span>
                                     </td>
                                     <td>
                                         <span v-if="agent.version && agent.version !== '0'" class="badge badge-info">v{{ agent.version }}</span>

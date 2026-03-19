@@ -3,7 +3,7 @@
 version: '3.3'
 services:
   dnsdist:
-    container_name: dist-unit
+    container_name: dist
     image: powerdns/dnsdist-19:latest
     restart: unless-stopped
     user: root
@@ -12,4 +12,4 @@ services:
     network_mode: host
     privileged: true
     volumes:
-      - ./dnsdist.conf:/etc/dnsdist/dnsdist.conf
+      - ./dnsdist-conf:/etc/dnsdist

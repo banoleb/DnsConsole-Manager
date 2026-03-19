@@ -3,8 +3,6 @@
 <head>
     {% include 'components/head.html' %}
 </head>
-
-
 <body>
     <div class="login-container">
 
@@ -13,10 +11,7 @@
             <div class="alert-danger">{{{ error }}}</div>
             {% endif %}
             <h2>DnsConsole-Manager</h2>
-            <div style="text-align: center;"> <a href="https://github.com/banoleb/dnsdist-webapi"  style="text-decoration: none; color: inherit;">Github:  v0.0.3</a></div>
-
-
-
+            <div style="text-align: center;"> <a href="https://github.com/banoleb/dnsdist-webapi"  style="text-decoration: none; color: inherit;">Github:  v0.0.4</a></div>
             {% if auth_enabled %}
             <form  method="post" action="{{{ url_for('login') }}}">
                 <div class="form-group">
@@ -57,7 +52,6 @@
             {% endif %}
 
         </div>
-
     </div>
 </body>
 </html>

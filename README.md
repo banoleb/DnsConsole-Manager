@@ -1,4 +1,4 @@
-# DnsConsole-Manager (beta v0.0.3)
+# DnsConsole-Manager (beta v0.0.4)
 
 ✨`I am actively developing the project and will be glad to receive any contribution.`
 
@@ -64,7 +64,12 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 controlSocket('127.0.0.1:5199')
 setConsoleACL('0.0.0.0/0')
 setKey("8ABLRNt6DamXrG/7PhUo2y6x6M2ZUidQfDLfYdTc8gM=")
-    # example uses makeKey() in cli
+-- example uses makeKey() in cli
+
+-- Add for manager-access list logic (for v0.0.4)
+dofile("/etc/dnsdist/manager.lua")
+
+
 ```
 
 2. Start/restart dnsdist:
@@ -88,14 +93,14 @@ python3 webapi-agent.py --create_token
 
 # example
 # change: app/settings.py
-python3 webapi-agent.py --port 8080 --console-host  127.0.0.1 --console-port 5199 --key "YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk="  --webtoken DLE-GL_SNSlGqegTAsMwNhb07-r2thYmI14mD9BBa-k
+python3 webapi-agent.py --port 8085 --console-host  127.0.0.1 --console-port 5199 --key "YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk="  --webtoken DLE-GL_SNSlGqegTAsMwNhb07-r2thYmI14mD9BBa-k
 ```
 
 4. Start via docker-compose:
 
 ```bash
 # change: docker-compose-agent.yml environments
-docker compose -f docker-compose-agent.yml up -d
+docker compose -f docker-compose-agent.yml -p agent up -d
 ```
 
 5. Check heath status
@@ -136,9 +141,22 @@ to start background syncer process:
 In docker
 ```
 # change: docker-compose-console.yml environments or .env file
-docker compose -f docker-compose-console.yml build
-docker compose -f docker-compose-console.yml up -d --remove-orphans
+# docker compose -f docker-compose-console.yml build
+docker compose -f docker-compose-console.yml -p console up -d --remove-orphans
 ```
+
+### Debug mode
+
+Set `LOG_LEVEL=INFO` in .env or in docker-compose-console.yml
+
+See logs:
+
+```
+docker exec -it dist-manager bash
+cat /var/log/supervisor/web.error.log
+```
+
+### Gunicorn
 **Additional Gunicorn options:**
 
 ```bash
@@ -168,12 +186,17 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
 #### For a quick start, you can fill in the database data, add agents and template rules
 
 ```bash
-# use seed_data.psql.sql for psql
-# use seed_data.sqlite.sql for sqlite
-
 # Start console in first - to automatically create a database schema and then load the data
+
+# use seed_data.psql.sql for psql
 psql -h server-psql -U psql -d psql -f db/seed_data.psql.sql
 
+# use seed_data.sqlite.sql for sqlite 
+cd app
+python3 init_db.py # create empty
+# or add some seed data
+cd ../
+sqlite3 app/dnsdist_webapi.db < db/seed_data.sqlite.sql
 # or use default db dnsdist_webapi.db in app dir
 ```
 
@@ -197,11 +220,14 @@ psql -h server-psql -U psql -d psql -f db/seed_data.psql.sql
 
 #### Monitoring
 
-- `VICTORIA_METRICS_ENABLED` =false
+- `VICTORIA_METRICS_ENABLED` false
 - `VICTORIA_METRICS_HOST` - Victoria Metrics host (default: localhost)
 - `VICTORIA_METRICS_PORT` - Victoria Metrics port (default: 8428)
 - `VICTORIA_METRICS_URL` - Victoria Metrics URL path (default: /api/v1/import/prometheus)
 
+#### login (see .env)
+- `AUTH_ENABLED` - false
+- `OIDC_ENABLED` - false
 
 
 ### Pytest
@@ -220,3 +246,9 @@ pytest test_console.py -v
 - Minor changes, background sync logic fixed. Action buttons added for rules
 #### BETA v0.0.3 08.03.2026
 - Add session-based authentication, user management, and OIDC SSO to web console
+#### BETA v0.0.4 20.03.2026
+- Add authentication API-key (api bearer token),
+- New Access list logic
+- Refactoring css
+- Many bugs and errors have been fixed
+- Quick links for commands and more

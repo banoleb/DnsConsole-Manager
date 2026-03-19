@@ -3,6 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
+            activeTab: 'dynblock',
             agents: [],
             groups: [],
             newDynBlockRule: {
@@ -37,7 +38,27 @@ createApp({
                 template: '',
                 description: ''
             },
-            templateModalMessage: null
+            templateModalMessage: null,
+            selectedAccessListName: '',
+            // Access List state
+            alEntries: [],
+            alLoading: false,
+            alSaving: false,
+            alEditingEntry: null,
+            alFormError: null,
+            alFormSuccess: null,
+            alFilterType: '',
+            alFilterCategory: '',
+            alFilterEnabled: '',
+            alForm: {
+                value: '',
+                type: 'list',
+                category: '',
+                enabled: true,
+                reason: '',
+                source: 'manual',
+                name: ''
+            }
         };
     },
     computed: {
@@ -48,14 +69,33 @@ createApp({
             return this.dynBlockRulesList.filter(rule => {
                 return rule.group_id === parseInt(this.selectedGroupFilter);
             });
+        },
+        alNameSuggestions() {
+            const names = this.alEntries
+                .map(e => e.name)
+                .filter(n => n && n.trim() !== '');
+            return [...new Set(names)].sort();
         }
     },
     mounted() {
+        // Activate the tab requested via ?tab= URL parameter.
+        // tab1 → dynblock rules (default), tab2 → access-list
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tab') === 'access') {
+            this.activeTab = 'accesslist';
+        }
+        if (urlParams.get('tab') === 'help') {
+            this.activeTab = 'helptab';
+        }
+        if (urlParams.get('tab') === 'templates') {
+            this.activeTab = 'templatetab';
+        }
         this.generateUuid();
         this.loadDynBlockRules();
         this.loadAgents();
         this.loadGroups();
         this.loadRuleCommandTemplates();
+        this.loadAccessListEntries();
     },
     methods: {
         async loadRuleCommandTemplates() {
@@ -384,6 +424,11 @@ createApp({
                 filledTemplate = filledTemplate.replace(/\{\{r_uuid\}\}/g, this.generatedUuid);
             }
 
+            // Replace r_access_list placeholder with selected access list name
+            if (this.selectedAccessListName) {
+                filledTemplate = filledTemplate.replace(/\{\{r_access_list\}\}/g,'webconsole_lists.' + this.selectedAccessListName);
+            }
+
             this.newDynBlockRule.rule_command = filledTemplate;
             this.showTemplateDropdown = false;
             this.selectedTemplateIndex = -1;
@@ -417,26 +462,26 @@ createApp({
                 });
             }
         },
-        openTemplateManagerModal() {
-            this.showTemplateManagerModal = true;
-            this.templateModalMessage = null;
-            this.editingTemplate = {
-                id: null,
-                name: '',
-                template: '',
-                description: ''
-            };
-        },
-        closeTemplateManagerModal() {
-            this.showTemplateManagerModal = false;
-            this.templateModalMessage = null;
-            this.editingTemplate = {
-                id: null,
-                name: '',
-                template: '',
-                description: ''
-            };
-        },
+        // openTemplateManagerModal() {
+        //     this.showTemplateManagerModal = true;
+        //     this.templateModalMessage = null;
+        //     this.editingTemplate = {
+        //         id: null,
+        //         name: '',
+        //         template: '',
+        //         description: ''
+        //     };
+        // },
+        // closeTemplateManagerModal() {
+        //     this.showTemplateManagerModal = false;
+        //     this.templateModalMessage = null;
+        //     this.editingTemplate = {
+        //         id: null,
+        //         name: '',
+        //         template: '',
+        //         description: ''
+        //     };
+        // },
         editTemplate(template) {
             this.editingTemplate = {
                 id: template.id,
@@ -547,6 +592,124 @@ createApp({
                     type: 'danger'
                 };
             }
+        },
+
+        // ---------------------------------------------------------------
+        // Access List methods
+        // ---------------------------------------------------------------
+        async loadAccessListEntries() {
+            this.alLoading = true;
+            try {
+                const params = new URLSearchParams();
+                if (this.alFilterType) params.append('type', this.alFilterType);
+                if (this.alFilterCategory) params.append('category', this.alFilterCategory);
+                if (this.alFilterEnabled !== '') params.append('enabled', this.alFilterEnabled);
+                const response = await fetch(`/api/access-list?${params.toString()}`);
+                const data = await response.json();
+                if (data.success) {
+                    this.alEntries = data.entries;
+                } else {
+                    console.error('Failed to load access list entries:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading access list entries:', error);
+            } finally {
+                this.alLoading = false;
+            }
+        },
+        alResetFilters() {
+            this.alFilterType = '';
+            this.alFilterCategory = '';
+            this.alFilterEnabled = '';
+            this.loadAccessListEntries();
+        },
+        alStartEdit(entry) {
+            this.alEditingEntry = entry;
+            this.alForm = {
+                value: entry.value,
+                type: entry.type,
+                category: entry.category || '',
+                enabled: entry.enabled,
+                reason: entry.reason || '',
+                source: entry.source || '',
+                name: entry.name || ''
+            };
+            this.alFormError = null;
+            this.alFormSuccess = null;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+        alCancelEdit() {
+            this.alEditingEntry = null;
+            this.alForm = { value: '', type: '', category: '', enabled: true, reason: '', source: '', name: '' };
+            this.alFormError = null;
+            this.alFormSuccess = null;
+        },
+        async alSubmitForm() {
+            this.alFormError = null;
+            this.alFormSuccess = null;
+            this.alSaving = true;
+            try {
+                const payload = {
+                    name: (this.alForm.name || '').trim(),
+                    value: this.alForm.value.trim(),
+                    type: this.alForm.type,
+                    category: this.alForm.category || null,
+                    enabled: this.alForm.enabled,
+                    reason: this.alForm.reason || null,
+                    source: this.alForm.source || null
+                };
+                let url = '/api/access-list';
+                let method = 'POST';
+                if (this.alEditingEntry) {
+                    url = `/api/access-list/${this.alEditingEntry.id}`;
+                    method = 'PATCH';
+                }
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.alFormSuccess = this.alEditingEntry
+                        ? `Entry "${data.entry.value}" updated successfully.`
+                        : `Entry "${data.entry.value}" created successfully.`;
+                    this.alCancelEdit();
+                    await this.loadAccessListEntries();
+                } else {
+                    this.alFormError = data.error || 'An error occurred.';
+                }
+            } catch (error) {
+                console.error('Error saving entry:', error);
+                this.alFormError = 'Failed to save entry. Please try again.';
+            } finally {
+                this.alSaving = false;
+            }
+        },
+        async alDeleteEntry(entry) {
+            if (!confirm(`Are you sure you want to delete entry "${entry.value}"? This cannot be undone.`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/access-list/${entry.id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    await this.loadAccessListEntries();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error deleting entry:', error);
+                alert('Failed to delete entry. Please try again.');
+            }
+        },
+        alFormatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleString();
+        },
+        alTruncate(str, len) {
+            if (!str) return '-';
+            return str.length > len ? str.substring(0, len) + '…' : str;
         }
     }
 }).mount('#app');

@@ -1,6 +1,8 @@
 import re
-
-
+import configparser
+from io import StringIO
+import logging
+logger = logging.getLogger('web-console-manager')
 def parse_showrules_output(output):
     """
     Parse showRules() command output into structured JSON format
@@ -29,7 +31,7 @@ def parse_showrules_output(output):
             # Pattern: number uuid creation_order optional_name matches rule_description action
 
             # Match pattern with UUID and creation order
-            match = re.match(r'^(\d+)\s+(.*?)\s+([0-9a-fA-F\-]{36})\s+(\S+)\s+(\d+)\s+(.+?)\s{2,}(.+)$', line)
+            match = re.match(r'^(\d+)\s+(.*?)\s+([0-9a-fA-F\-]{36})\s+(\S+)\s+(\d+)\s+(.+)\s+(.+)$', line)
 
             if match:
                 rule_id, name, uuid, creation_order, matches, rule, action = match.groups()
@@ -42,11 +44,12 @@ def parse_showrules_output(output):
                     'rule': rule.strip(),
                     'action': action.strip()
                 }
+                #print(rule)
                 rules.append(rule)
             else:
                 # Try a simpler pattern for lines without names
                 # Pattern: number uuid creation_order matches rule_description action
-                simple_match = re.match(r'^(\d+)\s+([0-9a-fA-F\-]+)\s+(\d+)\s+(\d+)\s+(.+?)\s{2,}(.+)$', line)
+                simple_match = re.match(r'^(\d+)\s+(.*?)\s+([0-9a-fA-F\-]{36})\s+(\S+)\s+(\d+)\s+(.+)\s+(.+)$', line)
                 if simple_match:
                     rule_id, uuid, creation_order, matches, rule, action = simple_match.groups()
                     rule = {
@@ -387,3 +390,32 @@ def parse_ranked_metric_output(output, item_field_name, count_field_name):
             items.append(item_data)
 
     return items if items else None
+
+
+def parse_with_configparser(content):
+    config = {}
+    current_section = None
+    section_pattern = re.compile(r'^\[(.*)\]$')
+    
+    lines = content.strip().split('\n')
+    
+    for line_num, line in enumerate(lines, 1):
+        line = line.strip()
+        
+
+        if not line:
+            continue
+        if line == 'Empty lists':
+            continue
+
+        section_match = section_pattern.match(line)
+        if section_match:
+            current_section = section_match.group(1).strip()
+            config[current_section] = []
+        elif current_section:
+
+            config[current_section].append(line)
+        else:
+            logger.debug(f"Error: string {line_num} out: {line}")
+
+    return config

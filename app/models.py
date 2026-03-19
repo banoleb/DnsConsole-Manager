@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from model_utils import (ComparableMixin, DateTimeSerializableMixin,
                          ValidationMixin)
 from settings import settings
-from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String,
-                        Text, create_engine)
+from sqlalchemy import (Boolean, Column, DateTime, Enum, ForeignKey, Integer,
+                        String, Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -615,6 +615,7 @@ class User(Base, DateTimeSerializableMixin):
     username = Column(String(255), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    api_token = Column(String(64), nullable=True, unique=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -626,12 +627,23 @@ class User(Base, DateTimeSerializableMixin):
         """Verify a password against the stored hash"""
         return check_password_hash(self.password_hash, password)
 
+    def generate_token(self):
+        """Generate and store a new bearer token for this user"""
+        import secrets
+        self.api_token = secrets.token_hex(32)
+        return self.api_token
+
+    def revoke_token(self):
+        """Revoke (clear) the bearer token for this user"""
+        self.api_token = None
+
     def to_dict(self):
         """Convert user to dictionary (without password hash)"""
         return {
             'id': self.id,
             'username': self.username,
             'is_active': self.is_active,
+            'api_token': self.api_token,
             'created_at': self._serialize_datetime(self.created_at),
             'updated_at': self._serialize_datetime(self.updated_at),
         }
@@ -658,6 +670,65 @@ class AuditLog(Base, DateTimeSerializableMixin):
         }
 
 
+class AccessList(Base, DateTimeSerializableMixin):
+    """Model for access list entries (blocklist and whitelist)"""
+    __tablename__ = 'access_list'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)    
+    value = Column(String(255), nullable=False)
+    type = Column(String(255), nullable=False)
+    category = Column(String(50), nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    reason = Column(String(255), nullable=True)
+    source = Column(String(50), nullable=True)
+    hit_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    created_by = Column(Integer, default=0, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    def to_dict(self):
+        """Convert access list entry to dictionary"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'value': self.value,
+            'type': self.type,
+            'category': self.category,
+            'enabled': self.enabled,
+            'reason': self.reason,
+            'source': self.source,
+            'hit_count': self.hit_count,
+            'created_at': self._serialize_datetime(self.created_at),
+            'created_by': self.created_by,
+            'updated_at': self._serialize_datetime(self.updated_at),
+        }
+
+
+class ManagerList(Base, DateTimeSerializableMixin):
+    __tablename__ = 'manager_list'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    agent_name = Column(String(255), nullable=False)  
+    value = Column(String(255), nullable=False)
+    category = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    def to_dict(self):
+        """Convert access list entry to dictionary"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'agent_name': self.agent_name,
+            'value': self.value,
+            'category': self.category,
+            'created_at': self._serialize_datetime(self.created_at),
+        }
+    def __repr__(self):
+        return f'<ManagerList {self.name}: {self.value}>'
+    
+
 # Database configuration
 class Database:
     """Database manager"""
@@ -673,6 +744,7 @@ class Database:
         """Create all tables and seed default data"""
         Base.metadata.create_all(bind=self.engine)
         self._seed_default_admin()
+        self._seed_default_syncer_usertoken()
 
     def _seed_default_admin(self):
         """Create the default admin user if no users exist"""
@@ -682,6 +754,22 @@ class Database:
                 admin = User(username='admin', is_active=True)
                 admin.set_password('admin')
                 session.add(admin)
+                session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _seed_default_syncer_usertoken(self):
+        """Create the default user to start syncer background sh script"""
+        session = self.SessionLocal()
+        try:
+            if session.query(User).count() == 1:
+                syncer = User(username='syncer', is_active=True, api_token = settings.DNSDIST_SYNCER_TOKEN)
+                syncer.set_password('syncer')
+
+                session.add(syncer)
                 session.commit()
         except Exception:
             session.rollback()

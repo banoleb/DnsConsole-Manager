@@ -10,11 +10,12 @@
 -- with the seeded IDs.
 
 INSERT INTO groups (id, name, description, created_at, updated_at) VALUES
-    (1, 'dns-servers', 'DNS servers located in the DC', '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00');
+    (1, 'dns-servers-us-east', 'DNS servers located in the US East region', '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
+    (2, 'dns-servers-us-west', 'DNS servers located in the US WEST region', '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00');
 
 INSERT INTO agents (id, agent_name, agent_ip, agent_port, agent_token, group_id, created_at, updated_at, is_active, status, version, service_time) VALUES
-    (1, 'dns-prod01', '192.168.0.160', 8080, 'WaeqcSDf_DM0cV09_-zBJwu2meMTUqshBq9Lj8bLiYM', 1, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00', TRUE, '0', '1.0.1', '0'),
-    (2, 'dns-prod02', '192.168.0.161', 8080, 'WaeqcSDf_DM0cV09_-zBJwu2meMTUqshBq9Lj8bLiYM', 1, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00', TRUE, '0', '1.0.1', '0');
+    (1, 'dnsdist-us-east-01', '192.168.0.160', 8085, 'WaeqcSDf_DM0cV09_-zBJwu2meMTUqshBq9Lj8bLiYM', 1, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00', TRUE, '0', '1.0.1', '0'),
+    (2, 'dnsdist-eu-west-01', '192.168.0.161', 8085, 'WaeqcSDf_DM0cV09_-zBJwu2meMTUqshBq9Lj8bLiYM', 1, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00', TRUE, '0', '1.0.1', '0');
 
 INSERT INTO command_history (id, agent_name, command, success, result, error, executed_at) VALUES
     (1, 'dns-prod01', 'showVersion()',  TRUE, 'dnsdist 1.9.0', NULL, '2024-01-01 00:00:00+00'),
@@ -33,7 +34,12 @@ INSERT INTO rule_command_templates (id, name, template, description, is_active, 
     (4, 'PoolAvailableRule', 'addAction(PoolAvailableRule("current_dc"), PoolAction("current_dc"),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                    'Check whether a pool has any servers available to handle queries',                                                              TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
     (5, 'QNameSuffixRule',   'addAction(QNameSuffixRule("example.com"), DropAction(),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                                 'Matches based on a group of domain suffixes for rapid testing of membership. (all *example.com)',                               TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
     (6, 'RegexRule',         'addAction(RegexRule("[0-9]{4,}\.example$"), DropAction(),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                               'Matches the query name against the regex in Posix Extended Regular Expressions format. The match is done in a case-insensitive way.', TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
-    (7, 'QNameRule',         'addAction(QNameRule("example.com"), DropAction(), {name="{{r_name}}",uuid = "{{r_uuid}}"})',                                                      'Matches queries with the specified qname exactly.',                                                                            TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00');
+    (7, 'QNameRule',         'addAction(QNameRule("example.com"), DropAction(), {name="{{r_name}}",uuid = "{{r_uuid}}"})',                                                      'Matches queries with the specified qname exactly.',                                                                            TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
+    (8, 'QNameSuffixRule',   'addAction(QNameSuffixRule({{r_access_list}}), DropAction(),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                             'Matches based on a group of domain suffixes for rapid testing of membership. (all *example.com)',                              TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00'),
+    (9, 'NetmaskGroupRule',  'addAction(NetmaskGroupRule({{r_access_list}}), DropAction(),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                            'Matches based on a group of IP suffixes. Checks if the client IP address (or destination) in the specified network-range.',    TRUE, '2024-01-01 00:00:00+00', '2024-01-01 00:00:00+00');
+
+INSERT INTO access_list (id, name, value, type, category, enabled, reason, source, hit_count, created_at, created_by, updated_at) VALUES
+    (1, 'blocklist-1', 'example.org', 'list', 'ip', FALSE, 'test', 'manual', 0  ,'2024-01-01 00:00:00+00', 0, '2024-01-01 00:00:00+00');                                                             
 
 INSERT INTO sync_status (id, last_sync_time, status, synced_agents_count, failed_agents_count, error_message) VALUES
     (1, '2024-01-01 00:00:00+00', 'OK', 2, 0, NULL);

@@ -11,12 +11,13 @@
             {% include 'components/navbar.html' %}
         </nav>
     </div>
-    <div style="padding-top: 50px;"></div>
+    <div ></div>
     <div id="app">
         <!-- Main Container -->
         <div class="container">
-            <!-- Add User Card -->
-            <div class="card mb-4">
+            <div > 
+                <div class="card mb-4" v-if="currentUser == 'admin'" > 
+
                 <div class="card-header primary">
                     <h6>{{ editingUser ? 'Edit User' : 'Add New User' }}</h6>
                 </div>
@@ -28,8 +29,30 @@
                             <tbody>
                                 <tr>
                                     <td>
+                                        <label class="form-label">Username</label>
+                                    </td>
+                                    <td>
+                                        <label class="form-label">
+                                            Password
+                                            <span v-if="editingUser" class="text-muted" style="font-size:0.85em"> (leave blank to keep current)</span>
+                                        </label>
+                                    </td>
+                                    <td>
+                                        <label class="form-label">
+                                            Status
+                                            <span v-if="editingUser" class="text-muted" style="font-size:0.85em"> (leave blank to keep current)</span>
+                                        </label>
+                                    </td>
+                                    <td>
+                                        <label class="form-label">
+                                            Action
+                                            <span v-if="editingUser" class="text-muted" style="font-size:0.85em"> (leave blank to keep current)</span>
+                                        </label>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
                                         <div class="mb-3">
-                                            <label class="form-label">Username</label>
                                             <input
                                                 class="form-control"
                                                 type="text"
@@ -41,10 +64,6 @@
                                     </td>
                                     <td>
                                         <div class="mb-3">
-                                            <label class="form-label">
-                                                Password
-                                                <span v-if="editingUser" class="text-muted" style="font-size:0.85em"> (leave blank to keep current)</span>
-                                            </label>
                                             <input
                                                 class="form-control"
                                                 type="password"
@@ -54,7 +73,6 @@
                                             >
                                         </div>
                                     </td>
-
                                     <td>
                                         <div class="mb-3">
                                             <label class="form-label">
@@ -65,7 +83,8 @@
 
                                     </td>
                                     <td>
-                                        <div style="display:flex; gap:0.5rem;">
+                                        <div class="mb-3">
+
                                             <button type="submit" class="btn" :disabled="saving">
                                                 {{ saving ? 'Saving...' : (editingUser ? 'Update User' : 'Add User') }}
                                             </button>
@@ -76,15 +95,11 @@
                                 </tr>
                             </tbody>
                         </table>
-                
-
+            
                     </form>
-
-
-
                 </div>
             </div>
-
+        </div>
             <!-- Users Table -->
             <div class="card">
                 <div class="card-header primary">
@@ -100,11 +115,12 @@
                             <thead>
                                 <tr>
                                     <th style="width: 5%;">ID</th>
-                                    <th style="width: 25%;">Username</th>
-                                    <th style="width: 20%;">Active</th>
-                                    <th style="width: 20%;">Created</th>
-                                    <th style="width: 20%;">Updated</th>
-                                    <th style="width: 10%;">Actions</th>
+                                    <th style="width: 10%;">Username</th>
+                                    <th style="width: 5%;">Active</th>
+                                    <th style="width: 39%;">API Token</th>
+                                    <th style="width: 13%;">Created</th>
+                                    <th style="width: 13%;">Updated</th>
+                                    <th style="width: 20%;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -113,22 +129,73 @@
                                     <td>
                                         {{ user.username }}
                                         <span v-if="user.username === currentUser" class="text-muted" style="font-size:0.8em"> (you)</span>
+                                        <span v-if="user.username === 'syncer'" class="text-muted" style="font-size:0.8em">(system user)</span>
+
                                     </td>
                                     <td>
                                         <span :style="{ color: user.is_active ? '#4caf50' : '#f44336' }">
                                             {{ user.is_active ? 'Yes' : 'No' }}
                                         </span>
                                     </td>
+                                    <td>
+                                        <div  style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;" >
+
+
+                                            <span v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')" style="font-family:monospace; font-size:0.8em; word-break:break-all;">
+                                                {{ tokenVisible[user.id] ? user.api_token : maskToken(user.api_token) }}
+                                            </span>
+                                            <span v-else class="text-muted" style="font-size:0.85em;">No token</span>
+                                            <button
+                                                v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')"
+                                                class="btn btn-sm"
+                                                @click="toggleTokenVisibility(user.id)"
+                                                style="padding:0.1rem 0.4rem; font-size:0.75em;"
+                                                :title="tokenVisible[user.id] ? 'Hide token' : 'Show token'"
+                                            >{{ tokenVisible[user.id] ? 'Hide' : 'Show' }}</button>
+                                            <button
+                                                v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')"
+                                                class="btn btn-sm"
+                                                @click="copyToken(user.api_token)"
+                                                style="padding:0.1rem 0.4rem; font-size:0.75em;"
+                                                title="Copy token to clipboard"
+                                            >Copy</button>
+                                            <button
+                                                v-if="(user.username === currentUser) || (currentUser === 'admin')"
+                                                class="btn btn-sm"
+                                                @click="generateToken(user)"
+                                                style="padding:0.1rem 0.4rem; font-size:0.75em;"
+                                                title="Generate new token"
+                                            >{{ user.api_token ? 'Regenerate' : 'Generate' }}</button>
+                                            <button
+                                                v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')"
+                                                class="btn btn-danger btn-sm"
+                                                @click="revokeToken(user)"
+                                                style="padding:0.1rem 0.4rem; font-size:0.75em;"
+                                                title="Revoke token"
+                                            >Revoke</button>
+                                        </div>
+                                    </td>
                                     <td>{{ formatDateTime(user.created_at) }}</td>
                                     <td>{{ formatDateTime(user.updated_at) }}</td>
                                     <td>
-                                        <button class="btn btn-sm" @click="startEdit(user)" style="margin-right:0.3rem;">Edit</button>
-                                        <button
-                                            class="btn btn-danger btn-sm"
-                                            @click="deleteUser(user)"
-                                            :disabled="user.username === currentUser"
-                                            :title="user.username === currentUser ? 'Cannot delete your own account' : ''"
-                                        >Delete</button>
+
+                                        <div v-if="user.username === 'syncer'">System user</div>
+                                        <div  v-else>
+
+                                            <div v-if="currentUser == 'admin'">
+                                                <button   class="btn btn-sm" @click="startEdit(user)" style="margin-right:0.3rem;">Edit</button>
+                                                <button
+                                                    class="btn btn-danger btn-sm"
+                                                    @click="deleteUser(user)"
+                                                    :title="user.username === currentUser ? 'Cannot delete your own account' : ''"
+                                                >Delete</button>
+                                            </div>
+
+                                            <div v-if="user.username === currentUser && !(currentUser == 'admin')" >
+                                                <button   class="btn btn-sm" @click="startEdit(user)" style="margin-right:0.3rem;">Edit</button>
+                                            </div>                 
+                                        </div>
+
                                     </td>
                                 </tr>
                             </tbody>

@@ -10,7 +10,7 @@
             {% include 'components/navbar.html' %}
         </nav>
     </div>
-    <div style="padding-top: 50px;"></div>
+    <div ></div>
     <div id="app">
         <!-- Main Container -->
         <div class="container">
@@ -20,10 +20,13 @@
                     <div class="mb-3">
                         <label class="form-label">Broadcast Command to Agents</label>
                         <div class="command-cloud">
+                            <button class="btn-command show" @click="sendBroadcastCommand('manager:show_all()')">
+                                manager:show_all()
+                            </button>
                             <button class="btn-command show" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">
                                 showRules()
                             </button>
-                            
+
                             <button class="btn-command show" @click="sendBroadcastCommand('showPools()')">
                                 showPools()
                             </button>
@@ -73,8 +76,8 @@
                                                 @keyup.enter="handleBroadcastEnter"
                                                 placeholder="Enter dnsdist command (e.g., showServers())"
                                             />
-                                            <button class="btn btn-primary" @click="sendBroadcastCommand(broadcastCommand)">
-                                                Execute
+                                            <button class="btn" @click="sendBroadcastCommand(broadcastCommand)">
+                                                ⏩ Execute
                                             </button>
                                         </div>
                                         <div v-if="autocomplete.showBroadcast && autocomplete.suggestions.length > 0" class="autocomplete-dropdown">
@@ -106,20 +109,27 @@
         <div class="container" style="padding-top: 0px;">
             <div class="card">
                 <div class="navbar-buttons" style="border-bottom: 1px solid var(--border-color);">
+                    <div  v-if="isOneAgentPage">
+                        <button class="btn btn-sm"   @click="AhrefgoToAgents">Show All Agents</button>
+                   
+    
+                    </div>
                     <button class="btn btn-sm" @click="showAgentsModal">Configure AGENTS</button>
                     <button class="btn btn-sm" @click="showHelpModal">Help</button>
                     <button class="btn btn-sm" @click="showHistoryModal">History</button>
-                    <select v-model="selectedGroupFilter" class="form-control" style="max-width: 300px;">
+                    <div  v-if="!isOneAgentPage">
+                    <select v-model="selectedGroupFilter" class="form-control" style="height: -webkit-fill-available;">
                         <option value="all">All Agents</option>
                         <option value="none">No Group</option>
                         <option v-for="group in groups" :key="group.id" :value="group.id">
                             {{ group.name }}
                         </option>
                     </select>
-                    <div v-if="!isOneAgentPage" >
+                </div>
+                    <div v-if="!isOneAgentPage"  style="align-content: center;" >
                     <label class="form-check-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding-left: 10px">
                         <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
-                        Online Agents only
+                        Enable Agents only
                     </label>
                 </div>
                 </div>
@@ -134,13 +144,21 @@
             </div>
 
             <div v-for="agent in filteredAgentsWithIndex" :key="agent.id ?? agent.originalIndex" class="agent-card">
-                <div class="card">
+                <div class="stat-card-agent">
                     <div class="card-header agent-header" @click="toggleAgent(agent.originalIndex)">
                         <div class="agent-info">
                             <div class="agent-name">
                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
                                 {{ agent.name }}
-                                <a :href="'/agents/' + agent.id" style="font-weight:600;"><span class="badge badge-secondary-secondary ">Use this agent</span></a>
+
+                                <span v-if="isOneAgentPage" class="badge badge-secondary-one">
+                                    Selected: {{ agent.name }}  🔥 FASTER DATA UPDATES 🔥
+                                </span>
+
+
+                               <span v-if="!isOneAgentPage" class="badge badge-secondary-secondary "> <a :href="'/agents/' + agent.id" style="font-weight:600;">Use this agent</a></span>
+
+
                             </div>
                             <div class="agent-url">{{ agent.url }}</div>
                             <div class="agent-rules-info">
@@ -162,7 +180,17 @@
                             <span v-if="agent.group_name" class="badge badge-group">
                                 {{ agent.group_name }}
                             </span>
-                            <span class="badge badge-secondary">{{ agent.status }}</span>
+                           
+                            <span 
+                            class="badge" 
+                            :class="{
+                                'badge-success': agent.status === 'online',
+                                'badge-secondary': agent.status === 'offline',
+                                'badge-disabled': agent.status === 'disabled'
+                            }"
+                        >
+                            {{ agent.status }}
+                        </span>
                             <span v-if="agent.version" class="badge badge-info">v{{ agent.version }}</span>
                             <label class="toggle-switch" @click.stop>
                                 <input
@@ -178,8 +206,11 @@
                     <transition name="collapse">
                         <div v-if="expandedAgents[agent.originalIndex]" class="card-body">
                                 <div class="mb-3">
-                                    <label class="form-label">Command</label>
+  
                                 <div class="command-cloud">
+                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'manager:show_all()')">
+                                        manager:show_all()
+                                    </button>
                                     <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">
                                         showRules()
                                     </button>
@@ -217,8 +248,8 @@
                                                 @keyup.enter="handleAgentEnter(agent, agent.originalIndex)"
                                                 placeholder="Enter dnsdist command (e.g., showServers())"
                                             />
-                                            <button class="btn btn-primary" @click="sendCommand(agent, agent.originalIndex, agentCommands[agent.originalIndex])">
-                                                Execute
+                                            <button class="btn" @click="sendCommand(agent, agent.originalIndex, agentCommands[agent.originalIndex])">
+                                                ⏩ Execute
                                             </button>
                                         </div>
                                         <div v-if="autocomplete.showAgent[agent.originalIndex] && autocomplete.suggestions.length > 0" class="autocomplete-dropdown">
@@ -272,9 +303,9 @@
                                                         </th>
                                                         <th style="width: 5%;">C. Order</th>
                                                         <th style="width: 5%;">Matches</th>
-                                                        <th style="width: 25%;">Rule</th>
-                                                        <th style="width: 20%;">Action</th>
-                                                        <th style="width: 10%;">
+                                                        <th style="width: 23%;">Rule</th>
+                                                        <th style="width: 18%;">Action</th>
+                                                        <th style="width: 14%;">
                                                             <div class="tooltip-container">
                                                                 <span class="help-icon">?</span>
                                                                 <span class="tooltip-text">Send a command to the agent. The rules are updated automatically within 10 seconds.</span>
@@ -284,19 +315,31 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <tr v-for="rule in getRules(agent.id)" :key="rule.id">
+                                                    topo-dynblock-chip
+
+                                                    
+                                                    <tr v-for="rule in getRules(agent.id)" :key="rule.id" :class="{ 'topo-dynblock-chip': rule.has_synced === 1 }">
                                                         <td>{{ rule.rule_id }}</td>
-                                                        <td>{{ rule.name || '-' }}</td>
+                                                        <td><span v-if="rule.has_synced === 1" >🛡️</span>{{ rule.name || '-' }}
+                                                        </td>
+
                                                         <td><a :href="'/rules/' + rule.uuid" >{{ rule.uuid || '-' }}</a></td>
-                                                        <td><span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
+                                                        <td ><span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
                                                         <span v-else>-</span>
                                                         </td>
                                                         <td>{{ rule.creation_order || '-' }}</td>
                                                         <td>{{ rule.matches }}</td>
-                                                        <td><code>{{ rule.rule }}</code></td>
+                                                        <!-- <code>{{ truncate(rule.rule, 40) }}</code> -->
+                                                        <td> <code>{{ rule.rule.length > 40 ? rule.rule.substring(0, 40) + '...' : rule.rule }}</code></td>
                                                         <td><code>{{ rule.action }}</code></td>
-                                                        <td><button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button></td>
+                                                        <td>
+                                                            <div class="buttons-tab-small">
+                                                                        <div  v-if="rule.has_synced === 0" >
+                                                                            <button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button></div>
+
+                                                                    <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button>
+                                                                </div>
+                                                    </td>
 
                                                     </tr>
                                                 </tbody>
@@ -339,7 +382,9 @@
                                                         <td>{{ server.server_id }}</td>
                                                         <td>{{ server.name }}</td>
                                                         <td><code>{{ server.address }}</code></td>
-                                                        <td><span :class="server.state === 'up' ? 'badge badge-success' : 'badge badge-danger'">{{ server.state }}</span></td>
+                                                        <td>
+                                                            <span :class="server.state.toLowerCase() === 'up' ? 'badge badge-success' : 'badge badge-danger'">{{ server.state }}</span>
+                                                        </td>
                                                         <td>{{ server.qps }}</td>
                                                         <td>{{ server.queries }}</td>
                                                         <td>{{ server.drops }}</td>
@@ -349,8 +394,9 @@
                                                         <td>{{ server.outstanding }}</td>
                                                         <td><code>{{ server.pools }}</code></td>
                                                         <td>
-                                                        <div><button >Down-UP</button>
-
+                                                            <div class="buttons-tab-small">
+                                                            <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setAuto()')">UP</button>
+                                                       <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setDown()')">Down</button>
                                                         </div>
                                                         </td>
                                                     </tr>
@@ -373,26 +419,28 @@
                                             <table class="rules-table">
                                                 <thead>
                                                     <tr>
-                                                        <th style="width: 5%;">Rank</th>
-                                                        <th style="width: 10%;">Client</th>
-                                                        <th style="width: 55%;">Actions</th>
-                                                        <th style="width: 5%;">Queries</th>
-                                                        <th style="width: 5%;">Percentage</th>
-
+                                                        <th style="width: 10%;">Rank</th>
+                                                        <th style="width: 30%;">Client</th>
+                                                      
+                                                        <th style="width: 20%;">Queries</th>
+                                                        <th style="width: 20%;">Percentage</th>
+                                                        <th style="width: 20%;">Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     <tr v-for="client in getTopClients(agent.id)" :key="client.id">
                                                         <td>{{ client.rank }}</td>
                                                         <td><code>{{ client.client }}</code></td>
-                                                        <td>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'})')">DropAction</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'})')">QPSAction(100)</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' + client.client+ '\'})')">QPSAction(1000)</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button>
-                                                        </td>
+
                                                         <td>{{ client.queries }}</td>
                                                         <td>{{ client.percentage }}</td>
+                                                        <td>
+                                                            <div class="buttons-tab-small">
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">DropAction</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">QPSAction(100)</button>
+                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' + client.client+ '\'}) mvRuleToTop()')">QPSAction(1000)</button>
+                                                        <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
+                                                    </div></td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -414,9 +462,10 @@
                                                 <thead>
                                                     <tr>
                                                         <th style="width: 10%;">Rank</th>
-                                                        <th style="width: 50%;">Query</th>
+                                                        <th style="width: 30%;">Query</th>
                                                         <th style="width: 20%;">Count</th>
                                                         <th style="width: 20%;">Percentage</th>
+                                                        <th style="width: 20%;">Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -425,6 +474,14 @@
                                                         <td><code>{{ query.query }}</code></td>
                                                         <td>{{ query.count }}</td>
                                                         <td>{{ query.percentage }}</td>
+                                                        <td>
+                                                            <div class="buttons-tab-small">
+                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), DropAction(), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">DropAction</button>
+                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(100), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">QPSAction(100)</button>
+                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(1000), {name=\'' + 'manual_' + query.query + '\'}) mvRuleToTop()')">QPSAction(1000)</button>
+                                                                <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 </tbody>
                                             </table>

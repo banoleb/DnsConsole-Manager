@@ -2,13 +2,13 @@
 # change  DNSDIST_KEY WEBAPI_TOKEN
 services:
   agent:
-    image: banoleb666/dnsconsole-manager:0.0.3
+    image: banoleb666/dnsconsole-manager:latest
     # build: .
     container_name: dist-agent1
     network_mode: host
     environment:
       - PYTHONUNBUFFERED=1
-      - WEBAPI_PORT=8080
+      - WEBAPI_PORT=8085
       - DNSDIST_CONSOLE_HOST=127.0.0.1
       - DNSDIST_CONSOLE_PORT=5199
       - DNSDIST_KEY=YjNUOVRYOXl6OGFKWDRYWGhuQWhYQXlQVzM3UVA0WHk=
@@ -22,6 +22,7 @@ services:
   # # if you need to use multiple agents on one host
 
   # agent2:
+  #   image: banoleb666/dnsconsole-manager:latest
   #   build: .
   #   container_name: dist-agent2
   #   network_mode: host

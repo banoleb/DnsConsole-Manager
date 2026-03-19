@@ -11,11 +11,13 @@
             {% include 'components/navbar.html' %}
         </nav>
     </div>
-    <div style="padding-top: 50px;"></div>
+    <div></div>
     <div id="app">
         <!-- Main Container -->
         <div class="container">
-
+            <div class="card">
+                <!-- Page Tabs -->
+                <div>
             <!-- Search Bar -->
             <div class="mb-3">
                 <input
@@ -25,11 +27,12 @@
                     placeholder="Search rules by agent, name, rule, action..."
                     style="max-width: 600px;"
                 />
-            </div>
-            <label class="form-check-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+           
+            <label class="form-check-label" style=" align-items: center; gap: 6px; cursor: pointer;">
                 <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
                 Online Agents only
-            </label>
+            </label> </div>
+                </div></div>
             <!-- Rules Table -->
             <div v-if="loading" class="text-center text-muted">
                 Loading rules...
@@ -59,27 +62,22 @@
                                     <th @click="sortBy('rule_id')" style="cursor: pointer; width: 2%;">
                                         Dist ID{{ getSortIcon('rule_id') }}
                                     </th>
-                                    <th @click="sortBy('uuid')" style="cursor: pointer; width: 18%;">
+                                    <th @click="sortBy('uuid')" style="cursor: pointer; width: 6%;">
                                         UUID {{ getSortIcon('uuid') }}
                                     </th>
                                     <th @click="sortBy('has_dynblock')" style="cursor: pointer; width: 4%;">
                                         Synced {{ getSortIcon('has_dynblock') }}
                                     </th>
-                                    <th @click="sortBy('creation_order')" style="cursor: pointer; width: 4%;">
+                                    <th @click="sortBy('creation_order')" style="cursor: pointer; width: 3%;">
                                         C.O {{ getSortIcon('creation_order') }}
                                     </th>
-                                    <th @click="sortBy('matches')" style="cursor: pointer; width: 5%;">
+                                    <th @click="sortBy('matches')" style="cursor: pointer; width: 3%;">
                                         Match {{ getSortIcon('matches') }}
                                     </th>
-                                    <th @click="sortBy('rule')" style="cursor: pointer; width: 25%;">
+                                    <th @click="sortBy('rule')" style="cursor: pointer; width: 58%;">
                                         Rule {{ getSortIcon('rule') }}
                                     </th>
-                                    <th @click="sortBy('action')" style="cursor: pointer; width: 13%;">
-                                        Action {{ getSortIcon('action') }}
-                                    </th>
-                                    <th @click="sortBy('updated_at')" style="cursor: pointer; width: 11%;">
-                                        Updated {{ getSortIcon('updated_at') }}
-                                    </th>
+
                                     <th style="width: 6%; text-align: center;">
                                         Actions
                                     </th>
@@ -98,7 +96,13 @@
 
                                     <td style="padding: 0.33rem;">{{ rule.name || '-' }}</td>
                                     <td style="padding: 0.33rem;">{{ rule.rule_id  }}</td>
-                                    <td style="padding: 0.33rem;">{{ rule.uuid || '-' }}</td>
+                                    <td style="padding: 0.33rem;">...{{ rule.uuid.slice(-5)  || '-' }}
+
+                                    <div  class="tooltip-container">
+                                            <span class="help-icon-dist">?</span>
+                                            <span class="tooltip-text">{{ rule.uuid  || '-' }}</span>
+                                    </div>
+                                    </td>
                                     <td style="padding: 0.33rem;">
                                         <span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
                                         <div v-if="rule.has_synced === 1"   class="tooltip-container">
@@ -114,9 +118,15 @@
                                     </td>
                                     <td style="padding: 0.33rem;">{{ rule.creation_order }}</td>
                                     <td style="padding: 0.33rem;">{{ rule.matches }}</td>
-                                    <td style="padding: 0.33rem;"><code style="font-size: 0.85rem; word-break: break-word;">{{ rule.rule }}</code></td>
-                                    <td style="padding: 0.33rem;"><code style="font-size: 0.85rem; word-break: break-word;">{{ rule.action }}</code></td>
-                                    <td style="padding: 0.33rem; font-size: 0.85rem;">{{ formatDate(rule.updated_at) }}</td>
+                                    <td style="padding: 0.33rem;"><code style="font-size: 0.85rem; word-break: break-word;">{{ rule.rule }}</code> ⏩<code style="font-size: 0.85rem; word-break: break-word;">{{ rule.action }}</code>
+                                    
+                                        <div  class="tooltip-container">
+                                            <span class="help-icon-dist">?</span>
+                                            <span class="tooltip-text">Updated: {{ formatDate(rule.updated_at) }}</span>
+                                            </div>
+                                    
+                                    </td>
+                                    
                                     <td style="padding: 0.33rem; text-align: center;">
                                         <div  class="tooltip-container">
                                             <div v-if="rule.agent_online === 0 "  >

@@ -22,6 +22,7 @@ createApp({
             broadcastOutput: '',
             broadcastTarget: 'all',
             isRefreshing: false,
+            refreshIntervalTime: 10000,
             isOneAgentPage: false,
             modals: {
                 help: false,
@@ -42,7 +43,7 @@ createApp({
             newAgent: {
                 name: '',
                 ip: '',
-                port: 8081,
+                port: 8085,
                 token: '',
                 group_id: null
             },
@@ -50,7 +51,7 @@ createApp({
                 id: null,
                 name: '',
                 ip: '',
-                port: 8081,
+                port: 8085,
                 token: '',
                 group_id: null
             },
@@ -158,7 +159,7 @@ createApp({
         // Auto-refresh every 2 seconds
         this.autoRefreshInterval = setInterval(() => {
             this.refreshAgents();
-        }, 10000);
+        }, this.refreshIntervalTime);
     },
     beforeUnmount() {
         if (this.autoRefreshInterval) {
@@ -166,8 +167,11 @@ createApp({
         }
     },
     methods: {
-        // # NEED REVIEW
 
+        AhrefgoToAgents() {
+            window.location.href = '/agents';
+            // window.location.href = `/agents/${this.agent.id}`;
+        },
         async refreshAgents() {
             this.isRefreshing = true;
             try {
@@ -184,6 +188,7 @@ createApp({
                     this.expandedTopQueries[0] = true;
                     this.isOneAgentPage = true;
                     this.showActiveOnly = false;
+                    this.refreshIntervalTime = 2000;
                 }
                 const url = isAgentDetail ? `/api/agents/${pathParts[1]}` : '/api/agents';
 
@@ -340,7 +345,8 @@ createApp({
                     })
                 });
                 const data = await response.json();
-
+                console.log(data.success)
+                console.log(data)
                 let html = '';
 
                     data.results.forEach((result, index) => {
@@ -350,7 +356,7 @@ createApp({
 
                         html += `<div style="margin-bottom: 15px; padding-bottom: 15px; ${isLastItem ? '' : 'border-bottom: 1px solid #444;'}">`;
                         html += `<div style="color: ${statusColor}; font-weight: bold;">${statusIcon} ${this.escapeHtml(result.agent_name)}</div>`;
-                        html += `<div font-weight: bold;">${command}</div>`;
+                        html += `<div font-weight: bold;">Command: ${command}</div>`;
 
                         if (result.success) {
                             // Check if this is showRules() with parsed data
@@ -424,7 +430,7 @@ createApp({
                                 html += `<div style="margin-top: 5px;">${this.escapeHtml(result.result || 'Command executed successfully')}</div>`;
                             }
                         } else {
-                            html += `<div style="color: #dc3545; margin-top: 5px;">Error: ${this.escapeHtml(result.error || 'Unknown error')}</div>`;
+                            html += `<div style="color: #dc3545; margin-top: 5px;">Error: ${this.escapeHtml(result.result || 'Unknown error')}</div>`;
                         }
 
                         html += `</div>`;
@@ -462,7 +468,8 @@ createApp({
                     })
                 });
                 const data = await response.json();
-
+                // console.log(data.success)
+                // console.log(data)
                 if (data.success) {
                     // Check if this is showRules() with parsed data
                     if (data.parsed_rules && Array.isArray(data.parsed_rules)) {
@@ -548,15 +555,17 @@ createApp({
                         output += '</details>';
 
                         this.agentOutputs[index] = output;
-                    } else {
-                        this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n\n${this.escapeHtml(data.result || 'Command executed successfully')}`+'\nCommand: '+command;
+                    }                     
+                    else
+                    {
+                        this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n`+'\nCommand: '+command+`\n${this.escapeHtml(data.result || 'Command executed successfully')}`;
 
                     }
                 } else {
-                    this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Error</span>\n\n${this.escapeHtml(data.error || 'Unknown error')}`+'\nCommand: '+command;
+                    this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Error</span>\n`+'\nCommand: '+command+`\n${this.escapeHtml(data.result || 'Unknown error')}`+'\nCommand: '+command;
                 }
             } catch (error) {
-                this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Connection Error</span>\n\n${this.escapeHtml(error.message)}`+'\nCommand: '+command;
+                this.agentOutputs[index] = `<span style="color: #dc3545;">✗ Connection Error</span>\n`+'\nCommand: '+command+`\n${this.escapeHtml(error.message)}`+'\nCommand: '+command;
             }
         },
         handleBroadcastEnter() {
@@ -727,7 +736,7 @@ createApp({
             await this.updateAgentStatus(agent, event, false);
         },
         async toggleAgentStatusInSettings(agent, event) {
-            await this.updateAgentStatus(agent, event, true);
+            await this.updateAgentStatus(agent, event, false);
         },
         async updateAgentStatus(agent, event, reloadAgentsList) {
             const newStatus = event.target.checked;

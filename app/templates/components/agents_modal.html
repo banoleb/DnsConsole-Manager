@@ -4,7 +4,9 @@
             <div class="modal" style="width: 50%;">
                 <div class="modal-header">
                     <h5 class="modal-title">🖥️ Manage Agents</h5>
-                    <button class="modal-close" @click="closeAgentsModal">×</button>
+             
+                        <button class="btn" @click="closeAgentsModal">Close</button>
+                   
                 </div>
                 <div class="modal-body">
                     <!-- Add Agent Form -->
@@ -46,7 +48,7 @@
                                             type="number"
                                             class="form-control"
                                             v-model.number="newAgent.port"
-                                            placeholder="e.g., 8081"
+                                            placeholder="e.g., 8055"
                                             required
                                         />
                                     </div>
@@ -106,6 +108,7 @@
                     <div class="card">
                         <div class="card-header primary">
                             <h6>📋 Existing Agents</h6>
+
                         </div>
                         <div class="card-body">
                             <div v-if="loadingAgentsList" class="text-muted text-center">
@@ -159,9 +162,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn" @click="closeAgentsModal">Close</button>
-                </div>
+
             </div>
         </div>
 
@@ -229,7 +230,6 @@
                                         class="form-control"
                                         :value="editAgent.name"
                                         disabled
-                                        style="background-color: #c5c5c5; cursor: not-allowed;"
                                     />
                                 </div>
                                 <div class="row row-2 mb-3">

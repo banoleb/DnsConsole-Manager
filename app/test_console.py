@@ -429,6 +429,111 @@ class TestUsersEndpoint:
         assert b'<!DOCTYPE html>' in response.data or b'<html' in response.data
 
 
+class TestUserTokenEndpoint:
+    """Tests for /api/users/<id>/token endpoints"""
+
+    def test_generate_token_creates_token(self, client):
+        """Test POST /api/users/<id>/token generates a new token"""
+        # Admin user has id=1 and we're logged in as admin
+        response = client.post('/api/users/1/token')
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert 'token' in data
+        assert len(data['token']) == 64
+        assert data['user']['api_token'] == data['token']
+
+    def test_generate_token_updates_existing_token(self, client):
+        """Test POST generates a new token even when one already exists"""
+        client.post('/api/users/1/token')
+        response = client.post('/api/users/1/token')
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert len(data['token']) == 64
+
+    def test_revoke_token_clears_token(self, client):
+        """Test DELETE /api/users/<id>/token revokes the token"""
+        client.post('/api/users/1/token')
+        response = client.delete('/api/users/1/token')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['user']['api_token'] is None
+
+    def test_generate_token_for_nonexistent_user(self, client):
+        """Test POST returns 404 for a user that doesn't exist"""
+        response = client.post('/api/users/9999/token')
+        assert response.status_code == 404
+
+    def test_generate_token_forbidden_for_other_user(self, client):
+        """Test that a user cannot generate a token for another user"""
+        # Create a second user
+        create_resp = client.post(
+            '/api/users',
+            data=json.dumps({'username': 'otheruser', 'password': 'pass'}),
+            content_type='application/json'
+        )
+        other_id = json.loads(create_resp.data)['user']['id']
+
+        # Session is for user_id=1, try to generate a token for another user
+        response = client.post(f'/api/users/{other_id}/token')
+        assert response.status_code == 403
+        data = json.loads(response.data)
+        assert data['success'] is False
+
+    def test_bearer_token_authentication(self, client):
+        """Test that a valid Bearer token grants API access"""
+        from settings import settings as s
+        original_auth = s.AUTH_ENABLED
+        original_oidc = s.OIDC_ENABLED
+        s.AUTH_ENABLED = True
+        s.OIDC_ENABLED = False
+        try:
+            # Generate a token for the admin user via authenticated session
+            gen_resp = client.post('/api/users/1/token')
+            token = json.loads(gen_resp.data)['token']
+
+            # Now make an unauthenticated request using the Bearer token
+            with app.test_client() as c:
+                response = c.get(
+                    '/api/users',
+                    headers={'Authorization': f'Bearer {token}'}
+                )
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert data['success'] is True
+        finally:
+            s.AUTH_ENABLED = original_auth
+            s.OIDC_ENABLED = original_oidc
+
+    def test_invalid_bearer_token_rejected(self, client):
+        """Test that an invalid Bearer token results in 401 for API routes"""
+        from settings import settings as s
+        original_auth = s.AUTH_ENABLED
+        original_oidc = s.OIDC_ENABLED
+        s.AUTH_ENABLED = True
+        s.OIDC_ENABLED = False
+        try:
+            with app.test_client() as c:
+                response = c.get(
+                    '/api/users',
+                    headers={'Authorization': 'Bearer invalidtoken'}
+                )
+                assert response.status_code == 401
+        finally:
+            s.AUTH_ENABLED = original_auth
+            s.OIDC_ENABLED = original_oidc
+
+    def test_token_included_in_user_dict(self, client):
+        """Test that api_token field appears in user listing"""
+        response = client.get('/api/users')
+        data = json.loads(response.data)
+        assert data['success'] is True
+        admin = next(u for u in data['users'] if u['username'] == 'admin')
+        assert 'api_token' in admin
+
+
 class TestAuthEnabledSetting:
     """Tests for AUTH_ENABLED toggle behaviour"""
 

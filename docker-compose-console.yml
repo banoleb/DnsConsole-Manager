@@ -1,7 +1,7 @@
 ---
 services:
   console:
-    image: banoleb666/dnsconsole-manager:0.0.3
+    image: banoleb666/dnsconsole-manager:latest
     # build: .
     container_name: dist-manager
     network_mode: host

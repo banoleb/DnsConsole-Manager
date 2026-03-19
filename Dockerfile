@@ -1,5 +1,5 @@
 
-FROM python:3.11-alpine AS builder
+FROM python:3.14-alpine AS builder
 
 RUN apk add --no-cache \
     gcc \
@@ -14,12 +14,15 @@ RUN pip install --no-cache-dir --user --no-warn-script-location \
     --no-compile \
     -r requirements.txt
 
-FROM python:3.11-alpine
+FROM python:3.14-alpine
 
 COPY --from=builder /app/.local /app/.local
 ENV PATH=/app/.local/bin:$PATH \
     PYTHONUSERBASE=/app/.local
 
+RUN apk update && apk upgrade
+
+# RUN pip install --upgrade setuptools
 RUN apk add --no-cache \
     curl \
     supervisor \

@@ -10,6 +10,7 @@ createApp({
             formError: null,
             formSuccess: null,
             currentUser: typeof CURRENT_USER !== 'undefined' ? CURRENT_USER : '',
+            tokenVisible: {},
             form: {
                 username: '',
                 password: '',
@@ -112,6 +113,63 @@ createApp({
             } catch (error) {
                 console.error('Error deleting user:', error);
                 alert('Failed to delete user. Please try again.');
+            }
+        },
+        async generateToken(user) {
+            const regenerating = !!user.api_token;
+            const confirmMsg = regenerating
+                ? `Regenerate API token for "${user.username}"? The current token will be invalidated.`
+                : `Generate API token for "${user.username}"?`;
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/users/${user.id}/token`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    await this.loadUsers();
+                    // Show the new token immediately after the list is refreshed
+                    this.tokenVisible = { ...this.tokenVisible, [user.id]: true };
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error generating token:', error);
+                alert('Failed to generate token. Please try again.');
+            }
+        },
+        async revokeToken(user) {
+            if (!confirm(`Revoke API token for "${user.username}"? This cannot be undone.`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/users/${user.id}/token`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    delete this.tokenVisible[user.id];
+                    await this.loadUsers();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error revoking token:', error);
+                alert('Failed to revoke token. Please try again.');
+            }
+        },
+        toggleTokenVisibility(userId) {
+            this.tokenVisible = { ...this.tokenVisible, [userId]: !this.tokenVisible[userId] };
+        },
+        maskToken(token) {
+            if (!token) return '';
+            return token.substring(0, 8) + '•'.repeat(token.length - 12) + token.substring(token.length - 4);
+        },
+        async copyToken(token) {
+            try {
+                await navigator.clipboard.writeText(token);
+                alert('Token copied to clipboard.');
+            } catch (error) {
+                console.error('Failed to copy token:', error);
+                alert('Failed to copy token. Please copy it manually.');
             }
         },
         formatDateTime(dateStr) {

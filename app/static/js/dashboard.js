@@ -6,6 +6,8 @@ Vue.createApp({
             agentsRules: [],
             agentsServers: [],
             dynblockRules: [],
+            accessLists: [],
+            showActiveOnly: true,
             loading: false
         };
     },
@@ -19,6 +21,7 @@ Vue.createApp({
         offlineAgents() {
             return this.agents.filter(a => a.status !== 'online').length;
         },
+
         totalGroups() {
             return this.groups.length;
         },
@@ -31,6 +34,7 @@ Vue.createApp({
         totalRules() {
             return this.agentsRules.reduce((sum, ar) => sum + (ar.rules_count || 0), 0);
         },
+
         totalServers() {
             let count = 0;
             this.agentsServers.forEach(as => {
@@ -53,9 +57,13 @@ Vue.createApp({
         totalDynblockRules() {
             return this.dynblockRules.length;
         },
+        // totalAccessList() {
+        //     return this.accessLists.filter(r => r.is_active).length;
+        // },
         activeDynblockRules() {
             return this.dynblockRules.filter(r => r.is_active).length;
-        }
+        },
+        
     },
     methods: {
         async fetchAll() {
@@ -66,7 +74,8 @@ Vue.createApp({
                     this.fetchGroups(),
                     this.fetchAgentsRules(),
                     this.fetchAgentsServers(),
-                    this.fetchDynblockRules()
+                    this.fetchDynblockRules(),
+                    this.fetchAccessLists()
                 ]);
             } finally {
                 this.loading = false;
@@ -77,10 +86,12 @@ Vue.createApp({
                 const res = await fetch('/api/agents');
                 const data = await res.json();
                 this.agents = Array.isArray(data) ? data : [];
+                
             } catch (e) {
                 console.error('Error fetching agents:', e);
             }
         },
+
         async fetchGroups() {
             try {
                 const res = await fetch('/api/groups');
@@ -117,8 +128,20 @@ Vue.createApp({
                 console.error('Error fetching dynblock rules:', e);
             }
         },
+        async fetchAccessLists() {
+            try {
+                const res = await fetch('/api/managerlist');
+                const data = await res.json();
+                this.accessLists = (data.success && Array.isArray(data.managerlist)) ? data.managerlist : [];
+                // console.log(this.accessLists);
+            } catch (e) {
+                console.error('Error fetching accesslist:', e);
+            }
+        },
+        
         getRulesCount(agentName) {
             const ar = this.agentsRules.find(r => r.agent_name === agentName);
+          
             return ar ? (ar.rules_count || 0) : 0;
         },
         getAgentRules(agentName) {
@@ -133,8 +156,29 @@ Vue.createApp({
             const ar = this.agentsServers.find(r => r.agent_name === agentName);
             return ar ? (ar.servers || []) : [];
         },
+
         getGroupAgents(groupId) {
-            return this.agents.filter(a => a.group_id === groupId);
+
+            let agents = this.agents.filter(a => a.group_id === groupId);
+            
+
+            if (this.showActiveOnly) {
+                agents = agents.filter(a => a.is_active === true);
+            }
+            
+            const statusPriority = {
+                'online': 1,
+                'offline': 2, 
+                'disabled': 3
+            };
+            
+            return agents.sort((a, b) => {
+                const statusDiff = statusPriority[a.status] - statusPriority[b.status];
+                if (statusDiff === 0) {
+                    return a.name.localeCompare(b.name);
+                }
+                return statusDiff;
+            });
         },
         getGroupDynblockRules(groupId) {
             return this.dynblockRules.filter(r => r.group_id === groupId);
@@ -142,14 +186,25 @@ Vue.createApp({
         getGroupDynblockRulesAll() {
             return this.dynblockRules.filter(r => !r.group_id);
         },
+        getAccessListAll(agentName) {
+            return this.accessLists.filter(s => s.agent_name === agentName);
+        },
+        getAccessListCount(agentName) {
+            const ar = this.accessLists.filter(s => s.agent_name === agentName);
+            // console.log(ar);
+            // console.log(ar.length);
+            return ar.length ;
+
+        },
         getStatusClass(status) {
             if (status === 'online') return 'status-online';
             if (status === 'offline') return 'status-offline';
             return 'status-unknown';
         },
         getStatusIcon(status) {
-            if (status === 'online') return '●';
-            if (status === 'offline') return '○';
+            if (status === 'online') return '🟢 ';
+            if (status === 'offline') return '⚪';
+            if (status === 'disabled') return '🟡';
             return '◌';
         },
         getAgentNodeClass(agent) {

@@ -9,26 +9,29 @@ import secrets
 import time
 import urllib.parse
 from datetime import datetime, timezone
-
-import parsers
 import requests
 import sqlalchemy as sa
-from flask import (Flask, jsonify, redirect, render_template, request,
-                   send_from_directory, session, url_for)
-from models import (Agent, AgentDynBlock, AuditLog, CommandHistory, Database,
-                    DownstreamServer, DynBlockRule, Group, Rule,
-                    RuleCommandTemplate, SyncStatus, TopClient, TopQuery, User,
-                    utc_now)
-from settings import settings
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
+import asyncio
+import parsers
+from flask import (
+    Flask, jsonify, redirect, render_template, request,
+    send_from_directory, session, url_for
+)
+from models import (
+    AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
+    Database, DownstreamServer, DynBlockRule, Group, ManagerList,
+    Rule, RuleCommandTemplate, SyncStatus, TopClient, TopQuery, User,
+    utc_now
+)
+from settings import settings
 from victoria_metrics import VictoriaMetricsExporter
+
 
 settings.configure_logging()
 logger = logging.getLogger('web-console-manager')
-
 db = None
-
-# Victoria Metrics exporter instance
 victoria_metrics_exporter = None
 
 
@@ -51,14 +54,10 @@ def create_app():
     """
     global db, victoria_metrics_exporter
 
-
-
     flask_app = Flask(__name__)
 
     flask_app.jinja_env.variable_start_string = '{{{'
     flask_app.jinja_env.variable_end_string = '}}}'
-
-    # Остальные настройки (опционально)
     flask_app.jinja_env.block_start_string = '{%'
     flask_app.jinja_env.block_end_string = '%}'
     flask_app.jinja_env.comment_start_string = '{#'
@@ -88,7 +87,6 @@ def create_app():
 
 
 app = create_app()
-
 # In-memory cache for the OIDC discovery document (fetched once per process)
 _oidc_config_cache = None
 
@@ -104,24 +102,101 @@ def _get_oidc_config():
     return _oidc_config_cache
 
 
-def login_required(f):
-    """Decorator that enforces authentication.
+def _authenticate_bearer_token():
+    """Check the Authorization header for a valid Bearer token.
 
-    Behaviour depends on settings:
-    - Both AUTH_ENABLED and OIDC_ENABLED are False → no auth, pass through.
-    - Otherwise → require an authenticated Flask session (user_id set by local
-      login or OIDC callback).  Unauthenticated requests are redirected to
-      /login.
+    Returns the authenticated User object if a valid token is found,
+    or None otherwise.
     """
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header[len('Bearer '):]
+    if not token:
+        return None
+    db_session = db.get_session()
+    try:
+        user = db_session.query(User).filter_by(api_token=token, is_active=True).first()
+        return user
+    finally:
+        db_session.close()
+
+# to-do
+def command_to_send(agent,command):
+    result_code = ''   
+    try:
+        agent_url = agent.get_url()
+        agent_token = agent.agent_token
+
+        logger.debug(f"fun: command_to_send: URL {agent_url}")
+        response = requests.post(
+            f'{agent_url}/api/v1/command',
+            json={'command': command},
+            headers={
+                'Content-Type': 'application/json',
+                'X-Agent-Token': agent_token
+            },
+            timeout=10
+        )
+        result_code = response.status_code
+        if result_code == 200:
+            logger.debug(f"fun: command_to_send: {result_code}")
+            return response
+        else:
+            logger.debug(f"fun: command_to_send: Error in HTTP {result_code}")
+            return response
+    except Exception as e:
+        logger.error(f"fun: command_to_send: {str(e)}")
+        return response
+    
+
+def _get_current_user_id():
+    """Return the user id of the currently authenticated user.
+    Checks the Flask session first, then falls back to a Bearer token in the
+    Authorization header.  Returns None if no authenticated user is found.
+    """
+    if session.get('user_id'):
+        return session['user_id']
+    token_user = _authenticate_bearer_token()
+    if token_user:
+        return token_user.id
+    return None
+
+
+def login_required(f):
+    """Decorator that enforces authentication - supports both sync and async functions."""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
-            # Authentication is completely disabled – let every request through.
-            return f(*args, **kwargs)
+            # Authentication is completely disabled
+            return _call_function(f, *args, **kwargs)
+        # Accept a valid Bearer token as an alternative to a session cookie.
+        if _authenticate_bearer_token():
+            return _call_function(f, *args, **kwargs)
+        
         if not session.get('user_id'):
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'Authentication required'}), 401
             return redirect(url_for('login', next=request.path))
-        return f(*args, **kwargs)
+        
+        return _call_function(f, *args, **kwargs)
+    
     return decorated_function
+
+def _call_function(f, *args, **kwargs):
+    """Helper to call both sync and async functions properly."""
+    result = f(*args, **kwargs)
+    if asyncio.iscoroutine(result):
+        # Get the current event loop or create one
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, create a new one
+            return asyncio.run(result)
+        else:
+            # Already have a running loop (shouldn't happen in Flask normally)
+            return loop.run_until_complete(result)
+    return result
 
 
 def extract_uuid_from_adddynblocks(command):
@@ -135,6 +210,248 @@ def extract_uuid_from_adddynblocks(command):
         rules = "Error"
     return rules
 
+def determine_category(name):
+    if name.startswith('ip'):
+        return 'ip'
+    elif name.startswith('domain'):
+        return 'domain'
+    elif name.startswith('vars'):
+        return 'vars'
+    else:
+        return 'other'
+
+
+def sync_accesslist_to_database(agent_name, parsed_data, session):
+
+    logger.debug(f"fun: sync_accesslist_to_database: start sync {agent_name}")
+    try:
+        current_records = session.query(ManagerList).filter_by(
+            agent_name=agent_name
+        ).all()
+        existing_records = {record.name: record for record in current_records}
+        
+        logger.debug(f"fun: sync_accesslist_to_database: data from {agent_name}")
+        for name, record in existing_records.items():
+            logger.debug(f"fun: sync_accesslist_to_database: {name}: {record.value}")
+        
+        logger.debug(f"fun: sync_accesslist_to_database: new data {agent_name}")
+        for name, values in parsed_data.items():
+            if values:
+                logger.debug(f"fun: sync_accesslist_to_database:  {name}: {values}")
+            else:
+                logger.debug(f"fun: sync_accesslist_to_database:  {name}: empty")
+        
+        added_count = 0
+        updated_count = 0
+        deleted_count = 0
+        skipped_count = 0
+        
+        for name, values in parsed_data.items():
+            category = determine_category(name)
+            
+            if values:
+                values_str = ', '.join(values)
+            else:
+                values_str = ''
+            logger.debug(f"fun: sync_accesslist_to_database: start work {name}")
+            if name in existing_records:
+                record = existing_records[name]
+
+                if record.value != values_str or record.category != category:
+                    logger.debug(f"fun: sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
+                    record.value = values_str
+                    record.category = category
+                    record.updated_at = datetime.utcnow()
+                    updated_count += 1
+                else:
+                    logger.debug(f"fun: sync_accesslist_to_database: no changes")
+                    skipped_count += 1
+                
+                del existing_records[name]
+            else:
+                if values_str:
+                    logger.debug(f"fun: sync_accesslist_to_database: new item {name} = {values_str}")
+                    new_item = ManagerList(
+                        name=name,
+                        agent_name=agent_name,
+                        value=values_str,
+                        category=category
+                    )
+                    session.add(new_item)
+                    added_count += 1
+                else:
+                    logger.debug(f"fun: sync_accesslist_to_database: skip empty add")
+        
+        for name, record in existing_records.items():
+            logger.debug(f"fun: sync_accesslist_to_database:  remove old list {name} = {record.value}")
+            session.delete(record)
+            deleted_count += 1
+        
+        session.commit()
+        
+        logger.debug(f"fun: sync_accesslist_to_database: stats: {agent_name}")
+        logger.debug(f"fun: sync_accesslist_to_database: added: {added_count}")
+        logger.debug(f"fun: sync_accesslist_to_database: updated: {updated_count}")
+        logger.debug(f"fun: sync_accesslist_to_database: deleted: {deleted_count}")
+        logger.debug(f"fun: sync_accesslist_to_database: skiped: {skipped_count}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f'sync_accesslist_to_database error for agent {agent_name}: {str(e)}')
+        session.rollback()
+        return False
+
+
+def split_and_normalize(value):
+    if not value or not isinstance(value, str):
+        return []
+    value = value.strip().strip("'").strip('"')
+    if ',' in value:
+        result = []
+        for part in value.split(','):
+            part = part.strip().strip("'").strip('"')
+            if part:
+                result.append(part)
+        return result
+    else:
+        return [value] if value else []
+
+
+def normalize_parsed_data(parsed_data):
+    """
+        Normalizes agent data:
+        - Separates lines with multiple IP addresses with commas
+        - Collects duplicates
+        - Preserves the original list names
+    """
+    normalized = {}
+    
+    for list_name, values in parsed_data.items():
+        if not values:
+            normalized[list_name] = []
+            continue
+        unique_values = set()
+        for item in values:
+            split_values = split_and_normalize(item)
+            for val in split_values:
+                if val:
+                    unique_values.add(val)
+        normalized[list_name] = sorted(unique_values)
+    return normalized
+
+
+def sync_accesslist_to_agents(agent, raw_parsed_data, session):
+
+    logger.debug(f"fun: sync_accesslist_to_agents: start sync {agent.agent_name}")
+
+    parsed_data = normalize_parsed_data(raw_parsed_data)
+    logger.debug(f"fun: sync_accesslist_to_agents: data from agent {agent.agent_name}")
+    for list_name, values in parsed_data.items():
+        if values:
+            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: {values}")
+        else:
+            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: empty")
+
+    access_items = session.query(AccessList).filter_by(
+        enabled=True
+    ).all()
+
+    truth_lists = {}
+    
+    for item in access_items:
+        list_name = item.name 
+        
+        if list_name not in truth_lists:
+            truth_lists[list_name] = set()
+
+        values = split_and_normalize(item.value)
+        for val in values:
+            truth_lists[list_name].add(val)
+    # truth_list ={'blocklist': {'1.2.3.0', '192.168.0.1'}, 'domain_spam': {'1.1.2.3'}, 'ip_ip_list': {'6.6.6.6'}}
+    logger.debug(f"fun: sync_accesslist_to_agents: (source of truth - what SHOULD be on an agent) {truth_lists}")
+    for list_name, values in truth_lists.items():
+        logger.debug(f"fun: sync_accesslist_to_agents: {list_name}: {(values)}")
+    agent_url = agent.get_url()
+    commands_sent = 0
+    # parsed_data.keys() =  dict_keys(['domain_spam', 'ip_ip_list', 'tttttt'])
+    if parsed_data:
+
+        for agent_list_name in parsed_data.keys():
+            logger.debug(f"fun: sync_accesslist_to_agents: {agent_list_name} ")
+            found_in_truth = False
+            if agent_list_name in truth_lists.keys():
+                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
+                found_in_truth = True
+            else:
+                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
+
+            if not found_in_truth:
+                logger.debug(f"fun: sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
+                command = f'manager:remove_list("{agent_list_name}")'
+                try:
+                    response = command_to_send(agent,command)
+                    time.sleep(0.1)
+                    if response.status_code == 200:
+                        logger.debug(f"fun: sync_accesslist_to_agents: Successfully")
+                        commands_sent += 1
+                    else:
+                        logger.debug(f"fun: sync_accesslist_to_agents: error")
+                except Exception as e:
+                    logger.error(f"fun: sync_accesslist_to_agents: error {str(e)}")
+
+    for truth_name, truth_values in truth_lists.items():
+        logger.debug(f"fun: sync_accesslist_to_agents: Processing a list from AccessList {truth_name}")
+    
+        target_list_name = truth_name
+        try:
+
+            # dict_keys(['domain_whitelist', 'domain_spam', 'ip_ip_list', 'tttttt'])
+            parsed_values_for_list = {}
+
+            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {agent.agent_name}")
+            for list_name, values in parsed_data.items():
+                logger.debug(f"fun: sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
+                if list_name == truth_name:
+                    parsed_values_for_list = values
+
+            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
+            parsed_values_for_list = set(parsed_values_for_list)
+
+            logger.debug(f"fun: sync_accesslist_to_agents:Target list on agent {target_list_name}")
+            logger.debug(f"fun: sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
+            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values}")
+            
+            to_add = truth_values - parsed_values_for_list
+            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
+
+            for item in to_add:
+                logger.debug(f"fun: sync_accesslist_to_agents:Add: {item}")
+                command = f'manager:add("{target_list_name}", "{item}")'
+                command_to_send(agent,command)
+
+            to_remove = parsed_values_for_list - truth_values
+            for item in to_remove:
+                logger.debug(f"fun: sync_accesslist_to_agents:Delete: {item}")
+                command = f'manager:remove("{target_list_name}", "{item}")'
+                if command_to_send(agent,command):
+                    commands_sent += 1
+                else:
+                    commands_sent += 1
+        except Exception as e:
+            logger.warning(f' {str(e)}')
+    
+    if commands_sent == 0:
+        logger.debug(f"fun: sync_accesslist_to_agents:Data is synchronized, no commands required. ")
+    else:
+        logger.info(f"fun: sync_accesslist_to_agents:SYNCHRONIZATION COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
+    
+    return {
+        'success': True,
+        'commands_sent': commands_sent,
+        'agent_name': agent.agent_name
+    }
+
 
 def sync_rules_to_database(agent_name, parsed_rules, session):
 
@@ -146,15 +463,15 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
     4. Rules that exist in the database but are not in the input data are deleted.
     5. The order of the data entry rules is not important.
     """
-    logger.info(f"=== STARTING SYNC for agent {agent_name} ===")
+    logger.debug(f"fun:sync_rules_to_database:=== STARTING SYNC for agent {agent_name} ===")
 
     # Get the existing agent rules
     existing_rules = session.query(Rule).filter_by(agent_name=agent_name).all()
-    logger.info(f"Found {len(existing_rules)} existing rules in DB")
+    logger.debug(f"fun:sync_rules_to_database:Found {len(existing_rules)} existing rules in DB")
 
     # Create a lookup dictionary by UUID (primary identifier)
     existing_rules_by_uuid = {rule.uuid: rule for rule in existing_rules if rule.uuid}
-    logger.info(f"UUID lookup map: {len(existing_rules_by_uuid)} entries")
+    logger.debug(f"fun:sync_rules_to_database:UUID lookup map: {len(existing_rules_by_uuid)} entries")
 
     stats = {
         'added': 0,
@@ -165,24 +482,23 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
 
     # If there is no input data, we delete all agent rules.
     if not parsed_rules:
-        logger.warning(f"No rules to sync for agent {agent_name}")
+        logger.debug(f"fun:sync_rules_to_database:No rules to sync for agent {agent_name}")
         for rule in existing_rules:
-            logger.info(f"Deleting rule {rule.uuid or rule.rule_id}")
+            logger.debug(f"fun:sync_rules_to_database:Deleting rule {rule.uuid or rule.rule_id}")
             session.delete(rule)
             stats['deleted'] += 1
     else:
-        logger.info(f"Processing {len(parsed_rules)} rules from input")
+        logger.debug(f"fun:sync_rules_to_database:Processing {len(parsed_rules)} rules from input")
 
         # A set of UUIDs from the input data to determine the rules to be removed
         input_uuids = set()
-
         # We process each rule from the input data
         for rule_data in parsed_rules:
             rule_uuid = rule_data.get('uuid')
 
             # Skip rules without UUIDs (shouldn't occur, but just in case)
             if not rule_uuid:
-                logger.warning(f"Rule without UUID, skipping: {rule_data}")
+                logger.debug(f"fun:sync_rules_to_database:Rule without UUID, skipping: {rule_data}")
                 continue
             input_uuids.add(rule_uuid)
 
@@ -203,26 +519,26 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
             if existing_rule:
                 if _update_rule_if_changed(existing_rule, new_rule):
                     stats['updated'] += 1
-                    logger.debug(f"Rule {rule_uuid} updated")
+                    logger.debug(f"fun:sync_rules_to_database:Rule {rule_uuid} updated")
                 else:
                     stats['unchanged'] += 1
-                    logger.debug(f"Rule {rule_uuid} unchanged")
+                    logger.debug(f"fun:sync_rules_to_database:Rule {rule_uuid} unchanged")
             else:
                 session.add(new_rule)
                 stats['added'] += 1
-                logger.debug(f"New rule {rule_uuid} added")
+                logger.debug(f"fun:sync_rules_to_database:New rule {rule_uuid} added")
 
         # We delete rules that are in the database but are not in the input data.
         for rule in existing_rules:
             if rule.uuid and rule.uuid not in input_uuids:
-                logger.info(f"Deleting rule {rule.uuid} (not in input data)")
+                logger.debug(f"fun:sync_rules_to_database:Deleting rule {rule.uuid} (not in input data)")
                 session.delete(rule)
                 stats['deleted'] += 1
     try:
         session.commit()
-        logger.info(f"Commit successful for agent {agent_name}")
+        logger.debug(f"fun:sync_rules_to_database:Commit successful for agent {agent_name}")
     except Exception as e:
-        logger.error(f"Error during commit: {e}")
+        logger.error(f"fun:sync_rules_to_database:Error during commit: {e}")
         session.rollback()
         raise
     _log_sync_results(agent_name, stats)
@@ -240,19 +556,19 @@ def _update_rule_if_changed(existing_rule, new_rule):
         old_value = getattr(existing_rule, field)
         new_value = getattr(new_rule, field)
         if old_value != new_value:
-            logger.debug(f"  Field '{field}': '{old_value}' -> '{new_value}'")
+            logger.debug(f"fun:_update_rule_if_changed:Field '{field}': '{old_value}' -> '{new_value}'")
             setattr(existing_rule, field, new_value)
             changed = True
     return changed
 
 
 def _log_sync_results(agent_name, stats):
-    logger.info(f"=== SYNC RESULTS for agent {agent_name} ===")
-    logger.info(f"Added: {stats['added']}")
-    logger.info(f"Updated: {stats['updated']}")
-    logger.info(f"Unchanged: {stats['unchanged']}")
-    logger.info(f"Deleted: {stats['deleted']}")
-    logger.info("=== END SYNC ===\n")
+    logger.debug(f"fun:_log_sync_results:=== SYNC RESULTS for agent {agent_name} ===")
+    logger.debug(f"fun:_log_sync_results:Added: {stats['added']}")
+    logger.debug(f"fun:_log_sync_results:Updated: {stats['updated']}")
+    logger.debug(f"fun:_log_sync_results:Unchanged: {stats['unchanged']}")
+    logger.debug(f"fun:_log_sync_results:Deleted: {stats['deleted']}")
+    logger.debug(f"fun:_log_sync_results:=== END SYNC {agent_name} ===")
 
 
 def sync_agent_status_to_database(agent_name, status, session):
@@ -261,7 +577,6 @@ def sync_agent_status_to_database(agent_name, status, session):
     if status is None:
         return
     # session.query(AgentDynBlock).filter_by(agent_name=agent_name).delete()
-
     # Add new blocks (can be empty list)
     for block_data in status:
         block = AgentDynBlock(
@@ -304,7 +619,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
     for server_data in parsed_servers:
         server_id = server_data.get('id')
         if server_id is None:
-            logger.warning(f'Server data missing id field, skipping: {server_data}')
+            logger.debug(f'fun:sync_servers_to_database:Server data missing id field, skipping: {server_data}')
             continue
 
         seen_server_ids.add(server_id)
@@ -332,7 +647,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
         # Validate the new server data for data quality monitoring
         is_valid, errors = new_server.validate()
         if not is_valid:
-            logger.warning(f'Server validation failed for server_id {server_id}: {errors}')
+            logger.debug(f'fun:sync_servers_to_database:Server validation failed for server_id {server_id}: {errors}')
 
         if server_id in existing_servers:
             # Server exists, check if update is needed
@@ -341,7 +656,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
             if new_server.needs_update(existing_server):
                 # Get changed fields for logging
                 changed = new_server.changed_fields(existing_server)
-                logger.debug(f'Server {server_id} changed fields: {list(changed.keys())}')
+                logger.debug(f'fun:sync_servers_to_database:Server {server_id} changed fields: {list(changed.keys())}')
 
                 for field in DownstreamServer.COMPARABLE_FIELDS:
                     setattr(existing_server, field, getattr(new_server, field))
@@ -360,7 +675,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
             session.delete(server)
             removed_count += 1
     session.commit()
-    logger.info(f'Synced servers for agent {agent_name}: '
+    logger.debug(f'fun:sync_servers_to_database:Synced servers for agent {agent_name}: '
                 f'{added_count} added, {updated_count} updated, '
                 f'{unchanged_count} unchanged, {removed_count} removed')
 
@@ -394,7 +709,7 @@ def sync_dynblocks_to_database(agent_name, parsed_blocks, session):
         session.add(block)
 
     session.commit()
-    logger.info(f'Synced {len(parsed_blocks)} dynamic blocks for agent {agent_name}')
+    logger.debug(f'fun:sync_dynblocks_to_database:Synced {len(parsed_blocks)} dynamic blocks for agent {agent_name}')
 
 
 def sync_topclients_to_database(agent_name, parsed_clients, session):
@@ -404,47 +719,77 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
     if not parsed_clients or not isinstance(parsed_clients, list):
         return
 
-    # Delete existing top clients for this agent
-    session.query(TopClient).filter_by(agent_name=agent_name).delete()
+    new_clients = [client_data.get('client') for client_data in parsed_clients]
+    logger.debug(f'fun:sync_topclients_to_database: {new_clients}')
 
-    # Add new top clients
+    session.query(TopClient).filter(
+        TopClient.agent_name == agent_name,
+        ~TopClient.client.in_(new_clients)
+    ).delete(synchronize_session=False)
+
     for client_data in parsed_clients:
-        client = TopClient(
+        client_name = client_data.get('client')
+        
+        existing = session.query(TopClient).filter_by(
             agent_name=agent_name,
-            rank=client_data.get('rank'),
-            client=client_data.get('client', ''),
-            queries=client_data.get('queries', 0),
-            percentage=client_data.get('percentage', '0.0%')
-        )
-        session.add(client)
+            client=client_name
+        ).first()
+        
+        if existing:
+
+            existing.rank = client_data.get('rank')
+            existing.queries = client_data.get('queries', 0)
+            existing.percentage = client_data.get('percentage', '0.0%')
+        else:
+
+            client = TopClient(
+                agent_name=agent_name,
+                rank=client_data.get('rank'),
+                client=client_name,
+                queries=client_data.get('queries', 0),
+                percentage=client_data.get('percentage', '0.0%')
+            )
+            session.add(client)
 
     session.commit()
-    logger.info(f'Synced {len(parsed_clients)} top clients for agent {agent_name}')
+    logger.debug(f'fun:sync_topclients_to_database:Synced {len(parsed_clients)} top clients for agent {agent_name}')
+
 
 
 def sync_topqueries_to_database(agent_name, parsed_queries, session):
-    """
-    Sync top queries to database for a given agent
-    """
-    if not parsed_queries or not isinstance(parsed_queries, list):
-        return
 
-    # Delete existing top queries for this agent
-    session.query(TopQuery).filter_by(agent_name=agent_name).delete()
+    new_queries = [query_data.get('query') for query_data in parsed_queries]
+    logger.debug(f'fun:sync_topclients_to_database: {new_queries}')
+    session.query(TopQuery).filter(
+        TopQuery.agent_name == agent_name,
+        ~TopQuery.query.in_(new_queries)
+    ).delete(synchronize_session=False)
 
-    # Add new top queries
     for query_data in parsed_queries:
-        query = TopQuery(
+        query_name = query_data.get('query')
+
+        existing = session.query(TopQuery).filter_by(
             agent_name=agent_name,
-            rank=query_data.get('rank'),
-            query=query_data.get('query', ''),
-            count=query_data.get('count', 0),
-            percentage=query_data.get('percentage', '0.0%')
-        )
-        session.add(query)
+            query=query_name
+        ).first()
+        
+        if existing:
+
+            existing.rank = query_data.get('rank')
+            existing.count = query_data.get('count', 0)
+            existing.percentage = query_data.get('percentage', '0.0%')
+        else:
+            new_query = TopQuery(
+                agent_name=agent_name,
+                rank=query_data.get('rank'),
+                query=query_name,
+                count=query_data.get('count', 0),
+                percentage=query_data.get('percentage', '0.0%')
+            )
+            session.add(new_query)
 
     session.commit()
-    logger.info(f'Synced {len(parsed_queries)} top queries for agent {agent_name}')
+    logger.debug(f'fun:sync_topqueries_to_database:Synced {len(parsed_queries)} top queries for agent {agent_name}')
 
 
 def sync_dynblock_rules_to_agents(session):
@@ -455,40 +800,37 @@ def sync_dynblock_rules_to_agents(session):
     try:
         # Get all active DynBlock rules
         all_dyn_rules = session.query(DynBlockRule).all()
-        # agents_rules = session.query(DynBlockRule).filter_by(is_active=True).all()
         all_rules = session.query(Rule).all()
         if len(all_dyn_rules) == 0:
-            logger.info('No active DynBlock rules to sync')
+            logger.debug('fun:sync_dynblock_rules_to_agents:No active DynBlock rules to sync')
             return
 
         agents = session.query(Agent).filter_by(is_active=True).all()
-        logger.info(f'Syncing {len(all_dyn_rules)} DynBlock rules to {len(agents)} agents')
+        logger.debug(f'fun:sync_dynblock_rules_to_agents:Syncing {len(all_dyn_rules)} DynBlock rules to {len(agents)} agents')
 
         # For each rule, sync to all agents
         for rule in all_dyn_rules:
             for agent in agents:
                 if agent.group_id == rule.group_id or rule.group_id is None:
-                    logger.debug(f'right agents group for  DynBlock {agent.agent_name}')
+                    logger.debug(f'fun:sync_dynblock_rules_to_agents:right agents group for  DynBlock {agent.agent_name}')
                     agent_url = agent.get_url()
 
-                    # Check if this rule already exists before posting the command
                     rule_exists = False
                     list_uuid_all = []
                     uuid = extract_uuid_from_adddynblocks(rule.rule_command)
                     for all_rule in all_rules:
                         if all_rule.agent_name == agent.agent_name:
                             list_uuid_all.append(all_rule.uuid)
-                        # else:
-                        #    logger.info(f'Rule: {uuid} -found in all rules, but not for agent: {agent.agent_name}, planing to sync')
-
                     if uuid in list_uuid_all:
                         rule_exists = True
                     else:
                         rule_exists = False
                     if rule_exists:
                         if not rule.is_active:
-                            logger.info(f'Rule: {uuid} - disabled and found on agent {agent.agent_name}, need to be deleted')
+                            logger.debug(f'fun:sync_dynblock_rules_to_agents:Rule: {uuid} - disabled and found on agent {agent.agent_name}, need to be deleted')
                             rm_rule_cmd = f'rmRule("{uuid}")'
+
+                            # to-do
                             try:
                                 response = requests.post(
                                     f'{agent_url}/api/v1/command',
@@ -499,29 +841,28 @@ def sync_dynblock_rules_to_agents(session):
                                     },
                                     timeout=settings.TIMEOUT_AGENT
                                 )
-                                # sync_success = False
                                 error_msg = None
 
                                 if response.status_code == 200:
                                     response_data = response.json()
                                     if response_data.get('success'):
                                         # sync_success = True
-                                        logger.debug(f'Successfully delete DynBlock rule {uuid} to agent {agent.agent_name}')
+                                        logger.debug(f'fun:sync_dynblock_rules_to_agents:Successfully delete DynBlock rule {uuid} to agent {agent.agent_name}')
                                     else:
                                         error_msg = response_data.get('error', 'Unknown error')
-                                        logger.warning(f'Failed to delete DynBlock rule {uuid} to agent {agent.agent_name}: {error_msg}')
+                                        logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to delete DynBlock rule {uuid} to agent {agent.agent_name}: {error_msg}')
                                 else:
                                     error_msg = f'HTTP {response.status_code}'
-                                    logger.warning(f'Failed to delete DynBlock rule {rule.uuid} to agent {agent.agent_name}: {error_msg}')
+                                    logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to delete DynBlock rule {rule.uuid} to agent {agent.agent_name}: {error_msg}')
                             except Exception as e:
-                                logger.error(f'Exception deletings DynBlock rule {uuid} to agent {agent.agent_name}: {str(e)}')
+                                logger.error(f'fun:sync_dynblock_rules_to_agents:Exception deletings DynBlock rule {uuid} to agent {agent.agent_name}: {str(e)}')
                         else:
 
-                            logger.info(f'Rule {uuid} already exists on agent {agent.agent_name}, skipping')
+                            logger.debug(f'fun:sync_dynblock_rules_to_agents:Rule {uuid} already exists on agent {agent.agent_name}, skipping')
                     else:
                         # Execute the DynBlock rule command
                         if rule.is_active:
-                            logger.info(f'NO Rule {uuid} found on agent {agent.agent_name}, try to sync')
+                            logger.debug(f'fun:sync_dynblock_rules_to_agents:NO Rule {uuid} found on agent {agent.agent_name}, try to sync')
                             try:
                                 response = requests.post(
                                     f'{agent_url}/api/v1/command',
@@ -538,30 +879,30 @@ def sync_dynblock_rules_to_agents(session):
                                     response_data = response.json()
                                     if response_data.get('success'):
                                         # sync_success = True
-                                        logger.debug(f'Successfully synced DynBlock rule {rule.id} to agent {agent.agent_name}')
+                                        logger.debug(f'fun:sync_dynblock_rules_to_agents:Successfully synced DynBlock rule {rule.id} to agent {agent.agent_name}')
                                     else:
                                         error_msg = response_data.get('error', 'Unknown error')
-                                        logger.warning(f'Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
+                                        logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
                                 else:
                                     error_msg = f'HTTP {response.status_code}'
-                                    logger.warning(f'Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
+                                    logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
                             except Exception as e:
-                                logger.error(f'Exception syncing DynBlock rule {rule.id} to agent {agent.agent_name}: {str(e)}')
+                                logger.error(f'fun:sync_dynblock_rules_to_agents:Exception syncing DynBlock rule {rule.id} to agent {agent.agent_name}: {str(e)}')
                         else:
-                            logger.info(f'disable {uuid} does not found on agent {agent.agent_name}, everything is OK')
+                            logger.debug(f'fun:sync_dynblock_rules_to_agents:disable {uuid} does not found on agent {agent.agent_name}, everything is OK')
                 else:
-                    logger.debug(f'no (difrent groups) DynBlock {agent.agent_name} {rule.name}')
+                    logger.debug(f'fun:sync_dynblock_rules_to_agents:no (difrent groups) DynBlock {agent.agent_name} {rule.name}')
         session.commit()
-        logger.debug('DynBlock rules sync completed')
+        logger.debug('fun:sync_dynblock_rules_to_agents:DynBlock rules sync completed')
 
     except Exception as e:
         session.rollback()
-        logger.error(f'Error syncing DynBlock rules: {str(e)}')
+        logger.error(f'fun:sync_dynblock_rules_to_agents:Error syncing DynBlock rules: {str(e)}')
 
 
 def update_agent_v2(session, agent_id, new_status, new_version, new_service_time):
     agent = session.query(Agent).filter(Agent.id == agent_id).first()
-    logger.info(f'update_agent: {agent.id} {agent.agent_name}')
+    logger.debug(f'fun:update_agent_v2:update_agent: {agent.id} {agent.agent_name}')
     try:
         if agent:
             agent.status = new_status
@@ -577,13 +918,13 @@ def update_agent_v2(session, agent_id, new_status, new_version, new_service_time
         return None
     except Exception as e:
         session.rollback()
-        logger.info(f'Error update_agent: {str(e)}')
+        logger.error(f'fun:update_agent_v2:Error update_agent: {str(e)}')
 
 
 @app.route('/api/startsync', methods=['GET'])
 @login_required
 async def sync_data():
-    logger.info("Start syncer")
+    logger.debug("fun:sync_data:Start syncer-main-task")
     session = db.get_session()
     try:
         agents = session.query(Agent).filter_by(is_active=True).all()
@@ -593,10 +934,12 @@ async def sync_data():
         error_messages = []
 
         agents_status_list = []
+        # Check if online, if else to skip all commands
+        skip_other_commands = False
         # Sync each active agent
         for agent in agents:
             agent_url = agent.get_url()
-            logger.debug(f'start sync: {agent.agent_name}')
+            logger.debug(f'fun:sync_data:start sync: {agent.agent_name}')
 
             rules_success = False
             servers_success = False
@@ -617,181 +960,239 @@ async def sync_data():
                     agent_info['version'] = data.get('version', 'Unknown')
                     agent_info['service_time'] = data.get('service_time', 'Unknown')
                     update_agent_v2(session, agent.id, agent_info['status'], agent_info['version'], agent_info['service_time'])
-                    logger.info(f'Sync agent api: {agent_info}')
+                    logger.debug(f'fun:sync_data:Sync agent api: {agent_info}')
                 else:
                     agent_info['status'] = 'offline'
                     agent_info['version'] = 'Unknown'
                     update_agent_v2(session, agent.id, agent_info['status'], agent_info['version'], agent_info['service_time'])
-                    logger.info('Error sync status:')
+                    logger.debug(f'fun:sync_data:Error sync status: , skip sync for {agent.agent_name}')
+                    # skip all sync if status is no online
+                    skip_other_commands = True
+                    info_tmp = agent_info['status']
+                    error_messages.append(f'{agent.agent_name} status: {info_tmp}')
+
 
             except requests.exceptions.RequestException as e:
                 agent_info['status'] = 'offline'
                 agent_info['version'] = 'Unknown'
                 update_agent_v2(session, agent.id, agent_info['status'], agent_info['version'], agent_info['service_time'])
-                logger.info(f'error sync status: {str(e)}')
+                logger.error(f'fun:sync_data:error sync status: {str(e)}, skip sync for {agent.agent_name}')
+                # skip all sync if status is no online
+                skip_other_commands = True
+                error_messages.append(f'{agent.agent_name} status: {str(e)}')
+
 
             time.sleep(0.1)
-            # Execute showRules() command
-            try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': 'showRules({showUUIDs=true})'},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
-
-                if response.status_code == 200:
-                    response_data = response.json()
-
-                    if response_data.get('success'):
-                        result_text = response_data.get('result', '')
-                        parsed_rules = parsers.parse_showrules_output(result_text)
-                        sync_rules_to_database(agent.agent_name, parsed_rules, session)
-                        rules_success = True
-                        agent_status = 'online'  # Agent responded successfully
-                else:
-                    agent_status = 'error'  # Non-200 response
-
-            except requests.exceptions.RequestException as e:
-                agent_status = 'offline'  # Connection error
-                error_msg = f'{agent.agent_name} rules: {str(e)}'
-                logger.debug(f'Failed to sync rules for agent {agent.agent_name}: {str(e)}')
-                error_messages.append(error_msg)
-            except Exception as e:
-                # Catch other exceptions (parsing, database, etc.) to prevent sync failure
-                agent_status = 'error'  # Other errors
-                error_msg = f'{agent.agent_name} rules: {str(e)}'
-                logger.debug(f'Failed to sync rules for agent {agent.agent_name}: {str(e)}')
-                error_messages.append(error_msg)
-            time.sleep(0.1)
-            # Execute showServers() command
-            try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': 'showServers()'},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
-                if response.status_code == 200:
-                    response_data = response.json()
-                    if response_data.get('success'):
-                        result_text = response_data.get('result', '')
-                        parsed_servers = parsers.parse_showservers_output(result_text)
-                        if parsed_servers is not None:
-                            sync_servers_to_database(agent.agent_name, parsed_servers, session)
-                            servers_success = True
-                    else:
-                        error_msg = (
-                            f'{agent.agent_name} servers: '
-                            f'{response_data.get("error", "Unknown error")}'
-                        )
-                        error_messages.append(error_msg)
-                else:
-                    error_messages.append(f'{agent.agent_name} servers: HTTP {response.status_code}')
-            except Exception as e:
-                logger.debug(f'Failed to sync servers for agent {agent.agent_name}: {str(e)}')
-                error_messages.append(f'{agent.agent_name} servers: {str(e)}')
-            time.sleep(0.1)
-            # Execute showDynBlocks() command
-            try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': 'showDynBlocks()'},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
-
-                if response.status_code == 200:
-                    response_data = response.json()
-                    if response_data.get('success'):
-                        result_text = response_data.get('result', '')
-                        parsed_blocks = parsers.parse_showdynblocks_detailed(result_text)
-                        if parsed_blocks is not None:
-                            sync_dynblocks_to_database(agent.agent_name, parsed_blocks, session)
-                    else:
-                        # Log warning but don't fail the overall sync
-                        logger.warning(f'{response_data.get("error", "Unknown error")}')
-                        logger.warning(f'Failed to sync dynamic blocks for agent {agent.agent_name}')
-                else:
-                    logger.warning(f'Failed to sync dynamic blocks for agent {agent.agent_name}: {response.status_code}')
-            except Exception as e:
-                logger.warning(f'Failed to sync dynamic blocks for agent {agent.agent_name}: {str(e)}')
-                # Don't add to error_messages as dynblocks are optional/informational
-            time.sleep(0.1)
-            # Execute topClients() command
-            try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': 'topClients()'},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
-                if response.status_code == 200:
-                    response_data = response.json()
-                    if response_data.get('success'):
-                        result_text = response_data.get('result', '')
-                        parsed_clients = parsers.parse_topclients_output(result_text)
-                        if parsed_clients is not None:
-                            sync_topclients_to_database(agent.agent_name, parsed_clients, session)
-                    else:
-                        # Log warning but don't fail the overall sync
-                        logger.warning(
-                            f'Failed to sync top clients for agent {agent.agent_name}: '
-                            f'{response_data.get("error", "Unknown error")}'
-                        )
-                else:
-                    logger.warning(
-                        f'Failed to sync top clients for agent {agent.agent_name}: '
-                        f'HTTP {response.status_code}'
+            if not skip_other_commands:
+                # sync_accesslist_to_database
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'manager:show_all()'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
                     )
-            except Exception as e:
-                logger.warning(f'Failed to sync top clients for agent {agent.agent_name}: {str(e)}')
-            time.sleep(0.1)
-            # Execute topResponses(10, 3) command NXDOMAIN
-            try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': 'topResponses(10)'},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
-
-                if response.status_code == 200:
-                    response_data = response.json()
-                    if response_data.get('success'):
-                        result_text = response_data.get('result', '')
-                        parsed_queries = parsers.parse_topqueries_output(result_text)
-                        if parsed_queries is not None:
-                            sync_topqueries_to_database(agent.agent_name, parsed_queries, session)
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get('success'):
+                            agent_status = 'online'
+                            result_text = response_data.get('result', '')
+                            parsed_rules = parsers.parse_with_configparser(result_text)
+                            sync = sync_accesslist_to_database(agent.agent_name, parsed_rules, session)
+                            try:
+                                sync_accesslist_to_agents(agent, parsed_rules, session)
+                            except requests.exceptions.RequestException as e:
+                                logger.debug(f'fun:sync_data:Failed to sync access list for agent {agent.agent_name}: {str(e)}')
+                            if sync:
+                                rules_success = True
+                            else:
+                                rules_success = False
                     else:
-                        # Log warning but don't fail the overall sync
-                        logger.warning(
-                            f'Failed to sync top responses for agent {agent.agent_name}: '
-                            f'{response_data.get("error", "Unknown error")}'
-                        )
-                else:
-                    logger.warning(
-                        f'Failed to sync top responses for agent {agent.agent_name}: '
-                        f'HTTP {response.status_code}'
+                        agent_status = 'error'  # Non-200 response
+                except requests.exceptions.RequestException as e:
+                    agent_status = 'offline'  # Connection error
+                    error_msg = f'{agent.agent_name} rules: {str(e)}'
+                    logger.error(f'fun:sync_data:Failed to sync access list for agent {agent.agent_name}: {str(e)}')
+                    error_messages.append(error_msg)
+                except Exception as e:
+                    # Catch other exceptions (parsing, database, etc.) to prevent sync failure
+                    agent_status = 'error'  # Other errors
+                    error_msg = f'{agent.agent_name} rules: {str(e)}'
+                    logger.error(f'fun:sync_data:Failed to sync access for agent {agent.agent_name}: {str(e)}')
+                    error_messages.append(error_msg)
+
+            time.sleep(0.1)
+            if not skip_other_commands:
+                # Execute showRules() command
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'showRules({showUUIDs=true})'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
                     )
-            except Exception as e:
-                logger.warning(f'Failed to sync top responses for agent {agent.agent_name}: {str(e)}')
-                # Don't add to error_messages as top responses are optional/informational
+                    if response.status_code == 200:
+                        response_data = response.json()
+
+                        if response_data.get('success'):
+                            result_text = response_data.get('result', '')
+                            parsed_rules = parsers.parse_showrules_output(result_text)
+                            sync_rules_to_database(agent.agent_name, parsed_rules, session)
+                            rules_success = True
+                            agent_status = 'online'  # Agent responded successfully
+                    else:
+                        agent_status = 'error'  # Non-200 response
+
+                except requests.exceptions.RequestException as e:
+                    agent_status = 'offline'  # Connection error
+                    error_msg = f'{agent.agent_name} rules: {str(e)}'
+                    logger.error(f'fun:sync_data:Failed to sync rules for agent {agent.agent_name}: {str(e)}')
+                    error_messages.append(error_msg)
+                except Exception as e:
+                    agent_status = 'error'  # Other errors
+                    error_msg = f'{agent.agent_name} rules: {str(e)}'
+                    logger.error(f'fun:sync_data:Failed to sync rules for agent {agent.agent_name}: {str(e)}')
+                    error_messages.append(error_msg)
+
+            time.sleep(0.1)
+            if not skip_other_commands:
+                # Execute showServers() command
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'showServers()'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
+                    )
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get('success'):
+                            result_text = response_data.get('result', '')
+                            parsed_servers = parsers.parse_showservers_output(result_text)
+                            if parsed_servers is not None:
+                                sync_servers_to_database(agent.agent_name, parsed_servers, session)
+                                servers_success = True
+                        else:
+                            error_msg = (
+                                f'{agent.agent_name} servers: '
+                                f'{response_data.get("error", "Unknown error")}'
+                            )
+                            error_messages.append(error_msg)
+                    else:
+                        error_messages.append(f'{agent.agent_name} servers: HTTP {response.status_code}')
+                except Exception as e:
+                    logger.error(f'fun:sync_data:Failed to sync servers for agent {agent.agent_name}: {str(e)}')
+                    error_messages.append(f'{agent.agent_name} servers: {str(e)}')
+
+            time.sleep(0.1)
+            if not skip_other_commands:
+                # Execute showDynBlocks() command
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'showDynBlocks()'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
+                    )
+
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get('success'):
+                            result_text = response_data.get('result', '')
+                            parsed_blocks = parsers.parse_showdynblocks_detailed(result_text)
+                            if parsed_blocks is not None:
+                                sync_dynblocks_to_database(agent.agent_name, parsed_blocks, session)
+                        else:
+                            # Log warning but don't fail the overall sync
+                            logger.warning(f'{response_data.get("error", "Unknown error")}')
+                            logger.warning(f'fun:sync_data:Failed to sync dynamic blocks for agent {agent.agent_name}')
+                    else:
+                        logger.error(f'fun:sync_data:Failed to sync dynamic blocks for agent {agent.agent_name}: {response.status_code}')
+                except Exception as e:
+                    logger.error(f'fun:sync_data:Failed to sync dynamic blocks for agent {agent.agent_name}: {str(e)}')
+                    # Don't add to error_messages as dynblocks are optional/informational
+
+            time.sleep(0.1)
+            if not skip_other_commands:
+                # Execute topClients() command
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'topClients()'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
+                    )
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get('success'):
+                            result_text = response_data.get('result', '')
+                            parsed_clients = parsers.parse_topclients_output(result_text)
+                            if parsed_clients is not None:
+                                sync_topclients_to_database(agent.agent_name, parsed_clients, session)
+                        else:
+                            # Log warning but don't fail the overall sync
+                            logger.warning(
+                                f'fun:sync_data:Failed to sync top clients for agent {agent.agent_name}: '
+                                f'{response_data.get("error", "Unknown error")}'
+                            )
+                    else:
+                        logger.error(
+                            f'fun:sync_data:Failed to sync top clients for agent {agent.agent_name}: '
+                            f'HTTP {response.status_code}'
+                        )
+                except Exception as e:
+                    logger.error(f'fun:sync_data:Failed to sync top clients for agent {agent.agent_name}: {str(e)}')
+
+            time.sleep(0.1)
+            if not skip_other_commands:
+                # Execute topResponses(10, 3) command NXDOMAIN
+                try:
+                    response = requests.post(
+                        f'{agent_url}/api/v1/command',
+                        json={'command': 'topResponses(10)'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'X-Agent-Token': agent.agent_token
+                        },
+                        timeout=settings.TIMEOUT_AGENT
+                    )
+
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        if response_data.get('success'):
+                            result_text = response_data.get('result', '')
+                            parsed_queries = parsers.parse_topqueries_output(result_text)
+                            if parsed_queries is not None:
+                                sync_topqueries_to_database(agent.agent_name, parsed_queries, session)
+                        else:
+                            # Log warning but don't fail the overall sync
+                            logger.error(
+                                f'fun:sync_data:Failed to sync top responses for agent {agent.agent_name}: '
+                                f'{response_data.get("error", "Unknown error")}'
+                            )
+                    else:
+                        logger.error(
+                            f'fun:sync_data:Failed to sync top responses for agent {agent.agent_name}: '
+                            f'HTTP {response.status_code}'
+                        )
+                except Exception as e:
+                    logger.error(f'fun:sync_data:Failed to sync top responses for agent {agent.agent_name}: {str(e)}')
+
             # Count agent as synced if both commands succeeded
             if rules_success and servers_success:
                 synced_count += 1
@@ -809,7 +1210,7 @@ async def sync_data():
                 'is_active': agent.is_active,
                 'group_name': agent.group.name if agent.group else None
             })
-        logger.info(failed_count)
+        logger.debug(f'fun:sync_data: {failed_count}')
 
         # Add inactive agents to the status list (marked as DISABLED)
         # Note: This query gets agents with is_active=False, which are not processed
@@ -849,7 +1250,7 @@ async def sync_data():
             sync_status.error_message = None
 
         session.commit()
-        logger.debug(f'Background sync completed: {synced_count} synced, {failed_count} failed')
+        logger.debug(f'fun:sync_data:Background sync completed: {synced_count} synced, {failed_count} failed')
         # Export metrics to Victoria Metrics if enabled
         if victoria_metrics_exporter and victoria_metrics_exporter.enabled:
             try:
@@ -864,12 +1265,12 @@ async def sync_data():
                     agents_status=agents_status_list
                 )
             except Exception as vm_error:
-                logger.error(f'Error exporting metrics to Victoria Metrics: {str(vm_error)}')
+                logger.error(f'fun:sync_data:Error exporting metrics to Victoria Metrics: {str(vm_error)}')
         sync_dynblock_rules_to_agents(session)
         return jsonify({"status": "success", "message": "Sync completed"})
 
     except Exception as e:
-        logger.error(f"Sync failed: {e}")
+        logger.error(f"fun:sync_data:Sync failed: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         session.close()
@@ -899,215 +1300,228 @@ def log_audit(action, details=None, ip_address=None):
             )
             session.add(audit_log)
             session.commit()
-            logger.debug(f'Audit log created: {action}')
+            logger.debug(f'fun:log_audit:Audit log created: {action}')
         except Exception as e:
             session.rollback()
-            logger.error(f'Error creating audit log: {str(e)}')
+            logger.error(f'fun:log_audit:Error creating audit log: {str(e)}')
         finally:
             session.close()
     except Exception as e:
-        logger.error(f'Error in log_audit: {str(e)}')
+        logger.error(f'fun:log_audit:Error in log_audit: {str(e)}')
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Render login page and handle login form submission.
-
-    Behaviour:
-    - If neither AUTH_ENABLED nor OIDC_ENABLED → redirect to dashboard.
-    - If OIDC_ENABLED and AUTH_ENABLED → show both local form and SSO button.
-    - If only OIDC_ENABLED → redirect straight to OIDC provider.
-    - If only AUTH_ENABLED → show local form only.
-    """
-    # Already logged in
-    if session.get('user_id'):
-        return redirect(url_for('dashboard'))
-
-    # Auth completely disabled
     if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
-        return redirect(url_for('dashboard'))
+        return render_template('errors/404.html'), 404
+    else:
+        """Render login page and handle login form submission.
 
-    # Only OIDC enabled – skip the login page and go straight to SSO
-    if settings.OIDC_ENABLED and not settings.AUTH_ENABLED:
-        return redirect(url_for('oidc_initiate'))
+        Behaviour:
+        - If neither AUTH_ENABLED nor OIDC_ENABLED → redirect to dashboard.
+        - If OIDC_ENABLED and AUTH_ENABLED → show both local form and SSO button.
+        - If only OIDC_ENABLED → redirect straight to OIDC provider.
+        - If only AUTH_ENABLED → show local form only.
+        """
+        # Already logged in
+        if session.get('user_id'):
+            return redirect(url_for('dashboard'))
 
-    error = None
-    if request.method == 'POST' and settings.AUTH_ENABLED:
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        db_session = db.get_session()
-        try:
-            user = db_session.query(User).filter_by(username=username, is_active=True).first()
-            if user and user.check_password(password):
-                session.clear()
-                session['user_id'] = user.id
-                session['username'] = user.username
-                log_audit('LOGIN', f'User "{username}" logged in')
-                next_url = request.args.get('next') or url_for('dashboard')
-                return redirect(next_url)
-            error = 'Invalid username or password.'
-        finally:
-            db_session.close()
+        # Auth completely disabled
+        if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+            return redirect(url_for('dashboard'))
 
-    return render_template(
-        'login.html',
-        error=error,
-        auth_enabled=settings.AUTH_ENABLED,
-        oidc_enabled=settings.OIDC_ENABLED,
-    )
+        # Only OIDC enabled – skip the login page and go straight to SSO
+        if settings.OIDC_ENABLED and not settings.AUTH_ENABLED:
+            return redirect(url_for('oidc_initiate'))
+
+        error = None
+        if request.method == 'POST' and settings.AUTH_ENABLED:
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+            db_session = db.get_session()
+            try:
+                user = db_session.query(User).filter_by(username=username, is_active=True).first()
+                if user and user.check_password(password):
+                    session.clear()
+                    session['user_id'] = user.id
+                    session['username'] = user.username
+                    log_audit('LOGIN', f'User "{username}" logged in')
+                    next_url = request.args.get('next') or url_for('dashboard')
+                    return redirect(next_url)
+                error = 'Invalid username or password.'
+                logger.error(f'fun:login:Invalid username or password {user.username}')
+            finally:
+                db_session.close()
+
+        return render_template(
+            'login.html',
+            error=error,
+            auth_enabled=settings.AUTH_ENABLED,
+            oidc_enabled=settings.OIDC_ENABLED,
+        )
 
 
 @app.route('/auth/oidc')
 def oidc_initiate():
-    """Begin the OIDC authorization-code flow.
+    if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+        return render_template('errors/404.html'), 404
+    else:
+        """Begin the OIDC authorization-code flow.
 
-    Generates a random ``state`` token (stored in the session as a CSRF guard),
-    then redirects the browser to the provider's authorization endpoint.
-    """
-    if not settings.OIDC_ENABLED:
-        return redirect(url_for('login'))
-    try:
-        oidc_cfg = _get_oidc_config()
-    except Exception as e:
-        logger.error(f'OIDC discovery failed: {e}')
-        return render_template('login.html', error='SSO provider is unavailable. Please try again later.',
-                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 503
+        Generates a random ``state`` token (stored in the session as a CSRF guard),
+        then redirects the browser to the provider's authorization endpoint.
+        """
+        if not settings.OIDC_ENABLED:
+            return redirect(url_for('login'))
+        try:
+            oidc_cfg = _get_oidc_config()
+        except Exception as e:
+            logger.error(f'fun:oidc_initiate:OIDC discovery failed: {e}')
+            return render_template('login.html', error='SSO provider is unavailable. Please try again later.',
+                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 503
 
-    state = secrets.token_urlsafe(32)
-    session['oidc_state'] = state
-    # Remember where to return the user after login
-    session['oidc_next'] = request.args.get('next', url_for('dashboard'))
+        state = secrets.token_urlsafe(32)
+        session['oidc_state'] = state
+        # Remember where to return the user after login
+        session['oidc_next'] = request.args.get('next', url_for('dashboard'))
 
-    params = {
-        'response_type': 'code',
-        'client_id': settings.OIDC_CLIENT_ID,
-        'redirect_uri': settings.OIDC_REDIRECT_URI,
-        'scope': settings.OIDC_SCOPES,
-        'state': state,
-    }
-    auth_url = oidc_cfg['authorization_endpoint'] + '?' + urllib.parse.urlencode(params)
-    return redirect(auth_url)
+        params = {
+            'response_type': 'code',
+            'client_id': settings.OIDC_CLIENT_ID,
+            'redirect_uri': settings.OIDC_REDIRECT_URI,
+            'scope': settings.OIDC_SCOPES,
+            'state': state,
+        }
+        auth_url = oidc_cfg['authorization_endpoint'] + '?' + urllib.parse.urlencode(params)
+        return redirect(auth_url)
 
 
 @app.route('/auth/callback')
 def oidc_callback():
-    """Handle the OIDC provider redirect after authentication.
+    if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+        return render_template('errors/404.html'), 404
+    else:
+        """Handle the OIDC provider redirect after authentication.
 
-    Steps:
-    1. Verify the ``state`` parameter matches the session (CSRF check).
-    2. Exchange the authorization ``code`` for tokens.
-    3. Call the ``userinfo`` endpoint with the access token.
-    4. Optionally verify group membership (``OIDC_REQUIRED_GROUP``).
-    5. Set the session and redirect the user.
-    """
-    if not settings.OIDC_ENABLED:
-        return redirect(url_for('login'))
+        Steps:
+        1. Verify the ``state`` parameter matches the session (CSRF check).
+        2. Exchange the authorization ``code`` for tokens.
+        3. Call the ``userinfo`` endpoint with the access token.
+        4. Optionally verify group membership (``OIDC_REQUIRED_GROUP``).
+        5. Set the session and redirect the user.
+        """
+        if not settings.OIDC_ENABLED:
+            return redirect(url_for('login'))
 
-    # CSRF state check
-    returned_state = request.args.get('state', '')
-    if not returned_state or returned_state != session.pop('oidc_state', None):
-        logger.warning('OIDC callback received invalid state – possible CSRF')
-        return render_template('login.html', error='Authentication failed: invalid state.',
-                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+        # CSRF state check
+        returned_state = request.args.get('state', '')
+        if not returned_state or returned_state != session.pop('oidc_state', None):
+            logger.error('fun:oidc_callback:OIDC callback received invalid state – possible CSRF')
+            return render_template('login.html', error='Authentication failed: invalid state.',
+                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
 
-    error_param = request.args.get('error')
-    if error_param:
-        error_desc = request.args.get('error_description', error_param)
-        logger.warning(f'OIDC provider returned error: {error_desc}')
-        return render_template('login.html', error=f'SSO error: {error_desc}',
-                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 401
+        error_param = request.args.get('error')
+        if error_param:
+            error_desc = request.args.get('error_description', error_param)
+            logger.error(f'fun:oidc_callback:OIDC provider returned error: {error_desc}')
+            return render_template('login.html', error=f'SSO error: {error_desc}',
+                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 401
 
-    code = request.args.get('code')
-    if not code:
-        return render_template('login.html', error='No authorization code received from SSO provider.',
-                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+        code = request.args.get('code')
+        if not code:
+            return render_template('login.html', error='No authorization code received from SSO provider.',
+                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
 
-    try:
-        oidc_cfg = _get_oidc_config()
+        try:
+            oidc_cfg = _get_oidc_config()
 
-        # Exchange code for tokens
-        token_resp = requests.post(
-            oidc_cfg['token_endpoint'],
-            data={
-                'grant_type': 'authorization_code',
-                'code': code,
-                'redirect_uri': settings.OIDC_REDIRECT_URI,
-                'client_id': settings.OIDC_CLIENT_ID,
-                'client_secret': settings.OIDC_CLIENT_SECRET,
-            },
-            timeout=10,
-        )
-        token_resp.raise_for_status()
-        token_data = token_resp.json()
-        access_token = token_data.get('access_token')
-
-        if not access_token:
-            raise ValueError('No access_token in token response')
-
-        # Fetch user info
-        userinfo_resp = requests.get(
-            oidc_cfg['userinfo_endpoint'],
-            headers={'Authorization': f'Bearer {access_token}'},
-            timeout=10,
-        )
-        userinfo_resp.raise_for_status()
-        userinfo = userinfo_resp.json()
-
-    except Exception as e:
-        logger.error(f'OIDC token/userinfo exchange failed: {e}')
-        return render_template('login.html', error='SSO authentication failed. Please try again.',
-                               auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 502
-
-    # Group membership check
-    if settings.OIDC_REQUIRED_GROUP:
-        user_groups = userinfo.get(settings.OIDC_GROUPS_CLAIM, [])
-        if isinstance(user_groups, str):
-            user_groups = [user_groups]
-        if settings.OIDC_REQUIRED_GROUP not in user_groups:
-            logger.warning(
-                f'OIDC login denied for "{userinfo.get("sub")}" – '
-                f'missing required group "{settings.OIDC_REQUIRED_GROUP}"'
+            # Exchange code for tokens
+            token_resp = requests.post(
+                oidc_cfg['token_endpoint'],
+                data={
+                    'grant_type': 'authorization_code',
+                    'code': code,
+                    'redirect_uri': settings.OIDC_REDIRECT_URI,
+                    'client_id': settings.OIDC_CLIENT_ID,
+                    'client_secret': settings.OIDC_CLIENT_SECRET,
+                },
+                timeout=10,
             )
-            return render_template(
-                'login.html',
-                error=f'Access denied: your account must belong to the '
-                      f'"{settings.OIDC_REQUIRED_GROUP}" group.',
-                auth_enabled=settings.AUTH_ENABLED,
-                oidc_enabled=settings.OIDC_ENABLED,
-            ), 403
+            token_resp.raise_for_status()
+            token_data = token_resp.json()
+            access_token = token_data.get('access_token')
 
-    # Identify the user by a stable sub/preferred_username
-    oidc_username = (
-        userinfo.get('preferred_username')
-        or userinfo.get('email')
-        or userinfo.get('sub', 'oidc-user')
-    )
+            if not access_token:
+                raise ValueError('No access_token in token response')
 
-    session.clear()
-    session['user_id'] = userinfo.get('sub', oidc_username)
-    session['username'] = oidc_username
-    session['auth_method'] = 'oidc'
+            # Fetch user info
+            userinfo_resp = requests.get(
+                oidc_cfg['userinfo_endpoint'],
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=10,
+            )
+            userinfo_resp.raise_for_status()
+            userinfo = userinfo_resp.json()
 
-    log_audit('LOGIN_OIDC', f'OIDC user "{oidc_username}" logged in')
-    next_url = session.pop('oidc_next', url_for('dashboard'))
-    return redirect(next_url)
+        except Exception as e:
+            logger.error(f'fun:oidc_callback:OIDC token/userinfo exchange failed: {e}')
+            return render_template('login.html', error='SSO authentication failed. Please try again.',
+                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 502
+
+        # Group membership check
+        if settings.OIDC_REQUIRED_GROUP:
+            user_groups = userinfo.get(settings.OIDC_GROUPS_CLAIM, [])
+            if isinstance(user_groups, str):
+                user_groups = [user_groups]
+            if settings.OIDC_REQUIRED_GROUP not in user_groups:
+                logger.error(
+                    f'fun:oidc_callback:OIDC login denied for "{userinfo.get("sub")}" – '
+                    f'missing required group "{settings.OIDC_REQUIRED_GROUP}"'
+                )
+                return render_template(
+                    'login.html',
+                    error=f'Access denied: your account must belong to the '
+                        f'"{settings.OIDC_REQUIRED_GROUP}" group.',
+                    auth_enabled=settings.AUTH_ENABLED,
+                    oidc_enabled=settings.OIDC_ENABLED,
+                ), 403
+
+        # Identify the user by a stable sub/preferred_username
+        oidc_username = (
+            userinfo.get('preferred_username')
+            or userinfo.get('email')
+            or userinfo.get('sub', 'oidc-user')
+        )
+
+        session.clear()
+        session['user_id'] = userinfo.get('sub', oidc_username)
+        session['username'] = oidc_username
+        session['auth_method'] = 'oidc'
+
+        log_audit('LOGIN_OIDC', f'OIDC user "{oidc_username}" logged in')
+        next_url = session.pop('oidc_next', url_for('dashboard'))
+        return redirect(next_url)
 
 
 @app.route('/logout')
 def logout():
-    """Log the current user out and redirect to login page"""
-    username = session.get('username', 'unknown')
-    auth_method = session.get('auth_method', 'local')
-    session.clear()
-    log_audit('LOGOUT', f'User "{username}" logged out (method: {auth_method})')
-    return redirect(url_for('login'))
+    if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+        return render_template('errors/404.html'), 404
+    else:
+
+        """Log the current user out and redirect to login page"""
+        username = session.get('username', 'unknown')
+        auth_method = session.get('auth_method', 'local')
+        session.clear()
+        log_audit('LOGOUT', f'User "{username}" logged out (method: {auth_method})')
+        return redirect(url_for('login'))
 
 
 @app.route('/')
 @login_required
 def dashboard():
     """Render the main console page"""
-
     return render_template('dashboard.html', 
                          auth_enabled=settings.AUTH_ENABLED)
 
@@ -1152,7 +1566,6 @@ def summary():
                          auth_enabled=settings.AUTH_ENABLED)
 
 
-
 @app.route('/dynblock-rules')
 @login_required
 def dynblock_rules_page():
@@ -1167,7 +1580,6 @@ def dynblock_by_uuid(rule_uuid: str):
     """Render the DynBlock rules management page"""
     return render_template('dynblock_rules.html', 
                          auth_enabled=settings.AUTH_ENABLED)
-
 
 
 @app.route('/audit')
@@ -1188,9 +1600,19 @@ def dashboard_page():
 @login_required
 def users_page():
     """Render the user management page"""
-    return render_template('users.html', 
-                         auth_enabled=settings.AUTH_ENABLED, 
-                         current_user=session.get('username'))
+    if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
+        return render_template('errors/404.html'), 404
+    else:
+        return render_template('users.html', 
+                            auth_enabled=settings.AUTH_ENABLED, 
+                            current_user=session.get('username'))
+
+@app.route('/access-list')
+@login_required
+def access_list_page():
+    """Redirect legacy /access-list URL to the merged dynblock-rules page (Access List tab)"""
+    return redirect(url_for('dynblock_rules_page'))
+
 
 @app.route('/static/<path:filename>')
 def static_files(filename):
@@ -1217,6 +1639,7 @@ def get_all_rules():
     try:
         rules = session.query(Rule).all()
         dynblock_uuids = set(dbr.rule_uuid for dbr in session.query(DynBlockRule.rule_uuid).distinct())
+        logger.debug(f"fun:get_all_rules:Get all rules from database {dynblock_uuids}")
         online_agent_names = set(
             agent.agent_name for agent in session.query(Agent)
             .filter(Agent.status == 'online')
@@ -1240,7 +1663,7 @@ def get_all_rules():
             }
             result.append(rule_dict)
 
-        print(result)
+        logger.debug(f"fun:get_all_rules::Result {result}")
         return jsonify({
             'success': True,
             'rules': result
@@ -1266,7 +1689,7 @@ def delete_rule(rule_id):
         session.delete(rule)
         session.commit()
 
-        logger.info(f'Deleted rule: {rule_id}')
+        logger.debug(f'fun:delete_rule:Deleted rule: {rule_id}')
 
         log_audit(
             action='Delete Rule',
@@ -1280,7 +1703,7 @@ def delete_rule(rule_id):
 
     except Exception as e:
         session.rollback()
-        logger.error(f'Error deleting rule: {str(e)}')
+        logger.error(f'fun:delete_rule:Error deleting rule: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1297,13 +1720,11 @@ def get_all_rules_id(rule_uuid: str):
     """
     session = db.get_session()
     try:
-        # Преобразование
+
         result = []
 
-        # Получаем все DynBlockRule и создаем множество uuid для быстрого поиска
         dynblock_uuids = set(dbr.rule_uuid for dbr in session.query(DynBlockRule.rule_uuid).distinct())
 
-        # Получаем конкретное правило по uuid
         rules = session.query(Rule).filter(Rule.uuid == rule_uuid).all()
         online_agent_names = set(
             agent.agent_name for agent in session.query(Agent)
@@ -1348,7 +1769,7 @@ def get_all_rules_id(rule_uuid: str):
                 'updated_at': rules._serialize_datetime(rules.updated_at) if hasattr(rules, '_serialize_datetime') else rules.updated_at
             }
             result.append(rule_dict)
-        print(result)
+        logger.debug(f"fun:get_all_rules_id:Result {result}")
         return jsonify({
             'success': True,
             'rules': result
@@ -1382,7 +1803,7 @@ def get_agents_rules():
         # Group rules by agent_name
         rules_by_agent = {}
         for rule in all_rules:
-            logger.debug(f'Get agents rules {rule}')
+            logger.debug(f'fun:get_agents_rules:Get agents rules {rule}')
             rule_info = {
                 'id': rule.id,
                 'agent_name': rule.agent_name,
@@ -1400,8 +1821,6 @@ def get_agents_rules():
                 rules_by_agent[rule.agent_name] = []
 
             rules_by_agent[rule.agent_name].append(rule_info)
-
-        # Build response
         agents_rules = []
         for agent in agents:
             rules = rules_by_agent.get(agent.agent_name, [])
@@ -1427,7 +1846,6 @@ def get_agents_servers():
     try:
         # Eager load group relationship for consistency
         agents = session.query(Agent).options(joinedload(Agent.group)).filter_by(is_active=True).all()
-
         # Early return if no agents to avoid unnecessary query with empty IN clause
         if not agents:
             return jsonify({
@@ -1447,7 +1865,6 @@ def get_agents_servers():
             if server.agent_name not in servers_by_agent:
                 servers_by_agent[server.agent_name] = []
             servers_by_agent[server.agent_name].append(server)
-
         # Build response
         agents_servers = []
         for agent in agents:
@@ -1475,7 +1892,6 @@ def get_agents_topclients():
     try:
         # Eager load group relationship for consistency
         agents = session.query(Agent).options(joinedload(Agent.group)).filter_by(is_active=True).all()
-
         # Early return if no agents to avoid unnecessary query with empty IN clause
         if not agents:
             return jsonify({
@@ -1484,17 +1900,14 @@ def get_agents_topclients():
             })
 
         agent_names = [agent.agent_name for agent in agents]
-
         # Fetch all topclients for active agents in a single query
         all_topclients = session.query(TopClient).filter(TopClient.agent_name.in_(agent_names)).all()
-
         # Group topclients by agent_name
         topclients_by_agent = {}
         for client in all_topclients:
             if client.agent_name not in topclients_by_agent:
                 topclients_by_agent[client.agent_name] = []
             topclients_by_agent[client.agent_name].append(client)
-
         # Build response
         agents_topclients = []
         for agent in agents:
@@ -1522,27 +1935,22 @@ def get_agents_topqueries():
     try:
         # Eager load group relationship for consistency
         agents = session.query(Agent).options(joinedload(Agent.group)).filter_by(is_active=True).all()
-
         # Early return if no agents to avoid unnecessary query with empty IN clause
         if not agents:
             return jsonify({
                 'success': True,
                 'agents_topqueries': []
             })
-
         # Get all agent names
         agent_names = [agent.agent_name for agent in agents]
-
         # Fetch all topqueries for active agents in a single query
         all_topqueries = session.query(TopQuery).filter(TopQuery.agent_name.in_(agent_names)).all()
-
         # Group topqueries by agent_name
         topqueries_by_agent = {}
         for query in all_topqueries:
             if query.agent_name not in topqueries_by_agent:
                 topqueries_by_agent[query.agent_name] = []
             topqueries_by_agent[query.agent_name].append(query)
-
         # Build response
         agents_topqueries = []
         for agent in agents:
@@ -1558,6 +1966,12 @@ def get_agents_topqueries():
             'success': True,
             'agents_topqueries': agents_topqueries
         })
+    except Exception as e:
+        logger.error(f'fun:get_agents_topqueries:Error fetching sync status: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
     finally:
         session.close()
 
@@ -1569,7 +1983,6 @@ def get_sync_status():
     session = db.get_session()
     try:
         sync_status = session.query(SyncStatus).first()
-
         if not sync_status:
             # Return default status if no sync has occurred yet
             return jsonify({
@@ -1588,7 +2001,7 @@ def get_sync_status():
             'sync_status': sync_status.to_dict()
         })
     except Exception as e:
-        logger.error(f'Error fetching sync status: {str(e)}')
+        logger.error(f'fun:get_sync_status:Error fetching sync status: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1627,7 +2040,7 @@ def get_metrics():
         else:
             return '# Victoria Metrics exporter not initialized\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
     except Exception as e:
-        logger.error(f'Error generating metrics: {str(e)}')
+        logger.error(f'fun:get_metrics:Error generating metrics: {str(e)}')
         return f'# Error generating metrics: {str(e)}\n', 500, {'Content-Type': 'text/plain; version=0.0.4'}
     finally:
         session.close()
@@ -1650,7 +2063,7 @@ def get_backend_health():
             'timestamp': utc_now().isoformat()
         }), 200
     except Exception as e:
-        logger.error(f'Backend health check failed: {str(e)}')
+        logger.error(f'fun:get_backend_health:Backend health check failed: {str(e)}')
         return jsonify({
             'success': False,
             'status': 'unhealthy',
@@ -1667,11 +2080,6 @@ def get_agents():
     session = db.get_session()
     try:
         agents = session.query(Agent).options(joinedload(Agent.group)).all()
-
-        # agents = session.query(Agent)\
-        #     .options(joinedload(Agent.group))\
-        #     .order_by(desc(Agent.is_active))\
-        #     .all()
         agents_status = []
 
         for agent in agents:
@@ -1704,12 +2112,6 @@ def get_agent_id(agent_id):
     session = db.get_session()
     try:
         agent = session.query(Agent).filter_by(id=agent_id).first()
-
-        # if not agent:
-        #     return jsonify({
-        #         'success': False,
-        #         'error': 'agent not found'
-        #     }), 404
 
         agents_status = []
 
@@ -1765,11 +2167,8 @@ def create_agent():
 
         session.add(agent)
         session.commit()
-
         # Re-query agent with group relationship eagerly loaded to avoid lazy loading
         agent = session.query(Agent).options(joinedload(Agent.group)).filter_by(id=agent.id).first()
-
-        # Log audit event
         log_audit(
             action='Create Agent',
             details=f"Created agent '{agent.agent_name}' with IP {agent.agent_ip}:{agent.agent_port}"
@@ -1778,7 +2177,7 @@ def create_agent():
         return jsonify({'success': True, 'agent': agent.to_dict()}), 201
     except Exception as e:
         session.rollback()
-        logger.error(f'Error creating agent: {str(e)}')
+        logger.error(f'fun:create_agent:Error creating agent: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -1798,7 +2197,6 @@ def update_agent(agent_id):
         agent = session.query(Agent).filter_by(id=agent_id).first()
         if not agent:
             return jsonify({'success': False, 'error': 'Agent not found'}), 404
-
         # Track status change for logging
         old_is_active = agent.is_active
 
@@ -1822,7 +2220,7 @@ def update_agent(agent_id):
             status_changed = True
             status_text = "available" if agent.is_active else "disabled"
             if not agent.is_active:
-                agent.status = "offline"
+                agent.status = "disabled"
             history = CommandHistory(
                 agent_name=agent.agent_name,
                 command=f"agent set new status {status_text}",
@@ -1838,7 +2236,6 @@ def update_agent(agent_id):
             )
 
         session.commit()
-
         # Re-query agent with group relationship eagerly loaded to avoid lazy loading
         agent = session.query(Agent).options(joinedload(Agent.group)).filter_by(id=agent.id).first()
 
@@ -1851,7 +2248,7 @@ def update_agent(agent_id):
         return jsonify({'success': True, 'agent': agent.to_dict()})
     except Exception as e:
         session.rollback()
-        logger.error(f'Error updating agent: {str(e)}')
+        logger.error(f'fun:update_agent:Error updating agent: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -1870,8 +2267,6 @@ def delete_agent(agent_id):
         agent_name = agent.agent_name
         session.delete(agent)
         session.commit()
-
-        # Log audit event
         log_audit(
             action='Delete Agent',
             details=f"Deleted agent '{agent_name}'"
@@ -1880,7 +2275,7 @@ def delete_agent(agent_id):
         return jsonify({'success': True, 'message': 'Agent deleted successfully'})
     except Exception as e:
         session.rollback()
-        logger.error(f'Error deleting agent: {str(e)}')
+        logger.error(f'fun:delete_agent:Error deleting agent: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -1912,7 +2307,6 @@ def execute_command():
             }), 400
 
         agent_url = agent.get_url()
-
         # Send command to agent
         try:
             response = requests.post(
@@ -1925,16 +2319,20 @@ def execute_command():
                 timeout=settings.TIMEOUT_AGENT
             )
             response_data = response.json()
-
+            logger.debug(f"fun:execute_command:response_data {response_data}")
             # Check if this is a showRules() command and parse the output
+            if response_data.get('success') and command.strip().startswith('manager'):
+                result_text = response_data.get('result', '')
+                parsed_rules = parsers.parse_with_configparser(result_text)
+
+                response_data['parsed_rules'] = parsed_rules
+
             if response_data.get('success') and command.strip().startswith('showRules'):
                 result_text = response_data.get('result', '')
                 parsed_rules = parsers.parse_showrules_output(result_text)
                 if parsed_rules is not None:
                     # Add parsed rules to response
                     response_data['parsed_rules'] = parsed_rules
-                    # Sync rules to database
-                    # sync_rules_to_database(agent.agent_name, parsed_rules, session)
 
             # Check if this is a showServers() command and parse the output
             if response_data.get('success') and command.strip().startswith('showServers'):
@@ -1943,12 +2341,14 @@ def execute_command():
                 if parsed_servers is not None:
                     # Add parsed servers to response
                     response_data['parsed_servers'] = parsed_servers
-                    # Sync servers to database
-
-                    # sync_servers_to_database(agent.agent_name, parsed_servers, session)
-
             # Save to history - encode result as JSON if it's not a simple string
             result = response_data.get('result', '')
+            if re.search(r'^Error:', result):
+
+                logger.debug(f"fun:execute_command:Error detected {response_data}")
+                response_data['parsed_rules'] = "Error detected"
+                response_data['success'] = False
+
             if result and not isinstance(result, str):
                 result = json.dumps(result)
             elif isinstance(result, str):
@@ -1970,7 +2370,7 @@ def execute_command():
             return jsonify(response_data), response.status_code
 
         except requests.exceptions.RequestException as e:
-            logger.error(f'Error sending command to agent {agent_url}: {str(e)}')
+            logger.error(f'fun:execute_command:Error sending command to agent {agent_url}: {str(e)}')
 
             # Save failed attempt to history
             history = CommandHistory(
@@ -2047,7 +2447,7 @@ def execute_broadcast_command():
                 result['success'] = response_data.get('success', False)
                 result['result'] = response_data.get('result')
                 result['error'] = response_data.get('error')
-
+ 
                 # Check if this is a showRules() command and parse the output
                 if result['success'] and command.strip().startswith('showRules'):
                     result_text = result['result']
@@ -2055,8 +2455,6 @@ def execute_broadcast_command():
                     if parsed_rules is not None:
                         # Add parsed rules to result
                         result['parsed_rules'] = parsed_rules
-                        # Sync rules to database
-                        # sync_rules_to_database(agent.agent_name, parsed_rules, session)
 
                 # Check if this is a showServers() command and parse the output
                 if result['success'] and command.strip().startswith('showServers'):
@@ -2065,19 +2463,21 @@ def execute_broadcast_command():
                     if parsed_servers is not None:
                         # Add parsed servers to result
                         result['parsed_servers'] = parsed_servers
-                        # Sync servers to database
-                        # sync_servers_to_database(agent.agent_name, parsed_servers, session)
+
 
                 # Save to history - encode result as JSON if it's not a simple string
                 result_data = result['result']
+                result_pars = response_data.get('result', '')
+
+                if re.search(r'^Error:', result_pars):
+                    logger.debug(f"fun:execute_broadcast_command:Error detected brodcast {result_data}")
+                    result['success'] = False
+     
                 if result_data and not isinstance(result_data, str):
                     result_data = json.dumps(result_data)
                 elif isinstance(result_data, str):
                     result_data = result_data
-                else:
-                    result_data = None
 
-                # Save to history
                 history = CommandHistory(
                     agent_name=agent.agent_name,
                     command=command,
@@ -2088,7 +2488,7 @@ def execute_broadcast_command():
                 session.add(history)
 
             except requests.exceptions.RequestException as e:
-                logger.error(f'Error sending command to agent {agent_url}: {str(e)}')
+                logger.error(f'fun:execute_broadcast_command:Error sending command to agent {agent_url}: {str(e)}')
                 result['error'] = f'Failed to connect to agent: {str(e)}'
 
                 # Save failed attempt to history
@@ -2131,7 +2531,7 @@ def execute_broadcast_command():
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error in broadcast command: {str(e)}')
+        logger.error(f'fun:execute_broadcast_command:Error in broadcast command: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2167,7 +2567,7 @@ def get_history():
             'total': total_count
         })
     except Exception as e:
-        logger.error(f'Error fetching history: {str(e)}')
+        logger.error(f'fun:get_history:Error fetching history: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2186,7 +2586,7 @@ def clear_history():
         deleted_count = session.query(CommandHistory).delete()
         session.commit()
 
-        logger.info(f'Cleared {deleted_count} history records')
+        logger.info(f'fun:clear_history:Cleared {deleted_count} history records')
 
         return jsonify({
             'success': True,
@@ -2194,7 +2594,7 @@ def clear_history():
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error clearing history: {str(e)}')
+        logger.error(f'fun:clear_history:Error clearing history: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2214,7 +2614,8 @@ def get_autocomplete_suggestions():
         limit = request.args.get('limit', 10, type=int)
 
         # Build subquery to get the most recent execution time for each command
-        from sqlalchemy import func
+        # from sqlalchemy import func
+        
         subquery = session.query(
             CommandHistory.command,
             func.max(CommandHistory.executed_at).label('latest_execution')
@@ -2228,9 +2629,7 @@ def get_autocomplete_suggestions():
         subquery = subquery.group_by(CommandHistory.command).order_by(
             func.max(CommandHistory.executed_at).desc()
         ).limit(limit)
-
         suggestions = subquery.all()
-
         # Extract command strings from tuples
         command_list = [cmd[0] for cmd in suggestions]
 
@@ -2240,7 +2639,7 @@ def get_autocomplete_suggestions():
             'count': len(command_list)
         })
     except Exception as e:
-        logger.error(f'Error fetching autocomplete suggestions: {str(e)}')
+        logger.error(f'fun:get_autocomplete_suggestions:Error fetching autocomplete suggestions: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2271,7 +2670,7 @@ def get_commands():
         })
 
     except Exception as e:
-        logger.error(f'Error reading commands file: {str(e)}')
+        logger.error(f'fun:get_commands:Error reading commands file: {str(e)}')
         return jsonify({
             'success': False,
             'error': f'Failed to read commands: {str(e)}'
@@ -2291,7 +2690,7 @@ def get_groups():
             'groups': [group.to_dict() for group in groups]
         })
     except Exception as e:
-        logger.error(f'Error fetching groups: {str(e)}')
+        logger.error(f'fun:get_groups:Error fetching groups: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2330,7 +2729,7 @@ def create_group():
         return jsonify({'success': True, 'group': group.to_dict()}), 201
     except Exception as e:
         session.rollback()
-        logger.error(f'Error creating group: {str(e)}')
+        logger.error(f'fun:create_group:Error creating group: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -2368,7 +2767,7 @@ def update_group(group_id):
         return jsonify({'success': True, 'group': group.to_dict()})
     except Exception as e:
         session.rollback()
-        logger.error(f'Error updating group: {str(e)}')
+        logger.error(f'fun:update_group:Error updating group: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -2398,7 +2797,7 @@ def delete_group(group_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        logger.error(f'Error deleting group: {str(e)}')
+        logger.error(f'fun:delete_group:Error deleting group: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -2412,9 +2811,9 @@ def get_all_dynblock_id(rule_uuid: str):
     """
     session = db.get_session()
     try:
-        # Получаем конкретное правило по uuid
+
         rules = session.query(DynBlockRule).options(joinedload(DynBlockRule.group)).filter(DynBlockRule.rule_uuid == rule_uuid).all()
-        # print(rule.rule_uuid)
+
         if not rules:
             session.close()
             return jsonify({
@@ -2425,6 +2824,12 @@ def get_all_dynblock_id(rule_uuid: str):
             'success': True,
             'rules':  [rule.to_dict() for rule in rules]
         })
+    except Exception as e:
+        logger.error(f'fun:get_all_dynblock_id:Error rules: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
     finally:
         session.close()
 
@@ -2443,7 +2848,7 @@ def get_dynblock_rules():
             'rules': [rule.to_dict() for rule in rules]
         })
     except Exception as e:
-        logger.error(f'Error fetching DynBlock rules: {str(e)}')
+        logger.error(f'fun:get_dynblock_rules:Error fetching DynBlock rules: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2467,9 +2872,9 @@ def create_dynblock_rule():
 
         get_uuid = extract_uuid_from_adddynblocks(data.get('rule_command'))
 
-        logger.info(f'get uuid in  DynBlock rule: {get_uuid} start creating')
+        logger.debug(f'fun:create_dynblock_rule:get uuid in  DynBlock rule: {get_uuid} start creating')
         if get_uuid == "Error":
-            logger.info(f'No uuid found in command: {get_uuid} error')
+            logger.debug(f'fun:create_dynblock_rule:No uuid found in command: {get_uuid} error')
             return jsonify({
                 'success': False,
                 'error': "No uuid found in command (every rule should have unique uuid)"
@@ -2501,7 +2906,7 @@ def create_dynblock_rule():
         # Re-query rule with group relationship eagerly loaded to avoid lazy loading
         rule = session.query(DynBlockRule).options(joinedload(DynBlockRule.group)).filter_by(id=rule.id).first()
 
-        logger.info(f'Created DynBlock rule: {rule.rule_command}')
+        logger.debug(f'fun:create_dynblock_rule:Created DynBlock rule: {rule.rule_command}')
 
         # Log audit event
         log_audit(
@@ -2515,7 +2920,7 @@ def create_dynblock_rule():
 
     except Exception as e:
         session.rollback()
-        logger.error(f'Error creating DynBlock rule: {str(e)}')
+        logger.error(f'fun:create_dynblock_rule:Error creating DynBlock rule: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2541,7 +2946,7 @@ def delete_dynblock_rule(rule_id):
         session.delete(rule)
         session.commit()
 
-        logger.info(f'Deleted DynBlock rule: {rule_id}')
+        logger.debug(f'fun:delete_dynblock_rule:Deleted DynBlock rule: {rule_id}')
 
         log_audit(
             action='Delete DynBlock Rule',
@@ -2555,7 +2960,7 @@ def delete_dynblock_rule(rule_id):
 
     except Exception as e:
         session.rollback()
-        logger.error(f'Error deleting DynBlock rule: {str(e)}')
+        logger.error(f'fun:delete_dynblock_rule:Error deleting DynBlock rule: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2602,7 +3007,9 @@ def update_dynblock_rule(rule_id):
                     'error': 'rule_command cannot be empty'
                 }), 400
             rule.rule_command = data['rule_command']
+            rule.rule_uuid = extract_uuid_from_adddynblocks(rule.rule_command)
             changes.append('rule_command')
+            changes.append('rule_uuid')
 
         # Update description if provided
         if 'description' in data:
@@ -2621,7 +3028,7 @@ def update_dynblock_rule(rule_id):
         session.commit()
         session.refresh(rule)
 
-        logger.info(f'Updated DynBlock rule {rule_id}')
+        logger.debug(f'fun:update_dynblock_rule:Updated DynBlock rule {rule_id}')
 
         # Log audit events consistently with agent updates
         rule_name = rule.name or f"Rule {rule_id}"
@@ -2648,7 +3055,7 @@ def update_dynblock_rule(rule_id):
 
     except Exception as e:
         session.rollback()
-        logger.error(f'Error updating DynBlock rule: {str(e)}')
+        logger.error(f'fun:update_dynblock_rule:Error updating DynBlock rule: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2664,13 +3071,13 @@ def get_rule_command_templates():
     session = db.get_session()
     try:
         templates = session.query(RuleCommandTemplate).all()
-        logger.debug(f'Get agents rules {[template.to_dict() for template in templates]}')
+        logger.debug(f'fun:get_rule_command_templates:Get agents rules {[template.to_dict() for template in templates]}')
         return jsonify({
             'success': True,
             'templates': [template.to_dict() for template in templates]
         })
     except Exception as e:
-        logger.error(f'Error fetching rule command templates: {str(e)}')
+        logger.error(f'fun:get_rule_command_templates:Error fetching rule command templates: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2712,14 +3119,14 @@ def create_rule_command_template():
         session.commit()
         session.refresh(template)
 
-        logger.info(f'Created template: {template.name}')
+        logger.info(f'fun:create_rule_command_template:Created template: {template.name}')
         return jsonify({
             'success': True,
             'template': template.to_dict()
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error creating template: {str(e)}')
+        logger.error(f'fun:create_rule_command_template:Error creating template: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2744,7 +3151,6 @@ def update_rule_command_template(template_id):
 
         data = request.get_json()
 
-        # Update fields if provided and validate non-empty values
         if 'name' in data:
             if not data['name'] or not data['name'].strip():
                 return jsonify({
@@ -2767,14 +3173,14 @@ def update_rule_command_template(template_id):
         session.commit()
         session.refresh(template)
 
-        logger.info(f'Updated template: {template.name}')
+        logger.info(f'fun:update_rule_command_template:Updated template: {template.name}')
         return jsonify({
             'success': True,
             'template': template.to_dict()
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error updating template: {str(e)}')
+        logger.error(f'fun:update_rule_command_template:Error updating template: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2801,14 +3207,14 @@ def delete_rule_command_template(template_id):
         session.delete(template)
         session.commit()
 
-        logger.info(f'Deleted template: {template_name}')
+        logger.info(f'fun:delete_rule_command_template:Deleted template: {template_name}')
         return jsonify({
             'success': True,
             'message': f'Template "{template_name}" deleted successfully'
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error deleting template: {str(e)}')
+        logger.error(f'fun:delete_rule_command_template:Error deleting template: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2859,7 +3265,7 @@ def get_audit_logs():
             }
         })
     except Exception as e:
-        logger.error(f'Error fetching audit logs: {str(e)}')
+        logger.error(f'fun:get_audit_logs:Error fetching audit logs: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2896,7 +3302,7 @@ def cleanup_old_audit_logs():
         })
     except Exception as e:
         session.rollback()
-        logger.error(f'Error cleaning up audit logs: {str(e)}')
+        logger.error(f'fun:cleanup_old_audit_logs:Error cleaning up audit logs: {str(e)}')
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2904,10 +3310,6 @@ def cleanup_old_audit_logs():
     finally:
         session.close()
 
-
-# ---------------------------------------------------------------------------
-# User management API
-# ---------------------------------------------------------------------------
 
 @app.route('/api/users', methods=['GET'])
 @login_required
@@ -2918,7 +3320,7 @@ def get_users():
         users = db_session.query(User).order_by(User.id.asc()).all()
         return jsonify({'success': True, 'users': [u.to_dict() for u in users]})
     except Exception as e:
-        logger.error(f'Error fetching users: {str(e)}')
+        logger.error(f'fun:get_users:Error fetching users: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         db_session.close()
@@ -2950,10 +3352,11 @@ def create_user():
         db_session.add(user)
         db_session.commit()
         log_audit('CREATE_USER', f'User "{username}" created by "{session.get("username")}"')
+        logger.info(f'fun:create_user:Create new user {username} created by {session.get("username")}')
         return jsonify({'success': True, 'user': user.to_dict()}), 201
     except Exception as e:
         db_session.rollback()
-        logger.error(f'Error creating user: {str(e)}')
+        logger.error(f'fun:create_user:Error creating user: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         db_session.close()
@@ -2992,10 +3395,11 @@ def update_user(user_id):
 
         db_session.commit()
         log_audit('UPDATE_USER', f'User id={user_id} updated by "{session.get("username")}"')
+        logger.info(f'fun:update_user:Update id={user_id} updated by {session.get("username")}')
         return jsonify({'success': True, 'user': user.to_dict()})
     except Exception as e:
         db_session.rollback()
-        logger.error(f'Error updating user: {str(e)}')
+        logger.error(f'fun:update_user:Error updating user: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         db_session.close()
@@ -3024,10 +3428,270 @@ def delete_user(user_id):
         db_session.delete(user)
         db_session.commit()
         log_audit('DELETE_USER', f'User "{username}" deleted by "{session.get("username")}"')
+        logger.info(f'fun:delete_user:Delete{username} deleted by {session.get("username")}')
         return jsonify({'success': True, 'message': f'User "{username}" deleted successfully'})
     except Exception as e:
         db_session.rollback()
-        logger.error(f'Error deleting user: {str(e)}')
+        logger.error(f'fun:delete_user:Error deleting user: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/users/<int:user_id>/token', methods=['POST'])
+@login_required
+def generate_user_token(user_id):
+    """Generate a new bearer token for the specified user.
+
+    Users may only generate a token for their own account unless there is no
+    active session (i.e. they authenticated via an existing Bearer token).
+    """
+    db_session = db.get_session()
+    try:
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Restrict to own account regardless of auth method
+        current_uid = _get_current_user_id()
+        if current_uid and current_uid != user_id:
+            return jsonify({'success': False, 'error': 'You can only manage your own token'}), 403
+
+        token = user.generate_token()
+        db_session.commit()
+        log_audit('GENERATE_TOKEN', f'API token generated for user "{user.username}"')
+        logger.info(f'fun:generate_user_token:GENERATE_TOKEN for user {user.username}')
+        return jsonify({'success': True, 'user': user.to_dict(), 'token': token}), 201
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'fun:generate_user_token:Error generating token for user {user_id}: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/users/<int:user_id>/token', methods=['DELETE'])
+@login_required
+def revoke_user_token(user_id):
+    """Revoke the bearer token for the specified user.
+
+    Users may only revoke their own token unless there is no active session
+    (i.e. they authenticated via an existing Bearer token).
+    """
+    db_session = db.get_session()
+    try:
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Restrict to own account regardless of auth method
+        current_uid = _get_current_user_id()
+        if current_uid and current_uid != user_id:
+            return jsonify({'success': False, 'error': 'You can only manage your own token'}), 403
+
+        user.revoke_token()
+        db_session.commit()
+        log_audit('REVOKE_TOKEN', f'API token revoked for user "{user.username}"')
+        return jsonify({'success': True, 'user': user.to_dict()})
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'Error revoking token for user {user_id}: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+def get_access_list_data(list_type=None, category=None, enabled=None):
+
+
+    db_session = db.get_session()
+    try:
+        query = db_session.query(AccessList)
+        
+        # if list_type in ('block', 'white'):
+        #     query = query.filter(AccessList.type == list_type)
+        
+        if category:
+            query = query.filter(AccessList.category == category)
+        
+        if enabled is not None:
+            query = query.filter(AccessList.enabled == enabled)
+        
+        entries = query.order_by(AccessList.id.desc()).all()
+        
+        return {
+            'success': True, 
+            'entries': [e.to_dict() for e in entries],
+            'count': len(entries)
+        }
+    except Exception as e:
+        logger.error(f'fun:get_access_list_data:Error fetching access list: {str(e)}')
+        return {'success': False, 'error': str(e), 'entries': []}
+    finally:
+        db_session.close()
+
+
+@app.route('/api/managerlist', methods=['GET'])
+@login_required
+def get_manager_list():
+
+    db_session = db.get_session()
+    try:
+        current_records = db_session.query(ManagerList).all()
+        t=[]
+        for u in current_records:
+
+            t.append(u.to_dict())
+
+        return jsonify({'success': True, 'managerlist': t})
+
+
+    except Exception as e:
+        logger.error(f'fun:get_manager_list:Error fetching managerlist: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/access-list', methods=['GET'])
+@login_required
+def get_access_list():
+
+    """API endpoint access list"""
+
+    list_type = request.args.get('type')
+    category = request.args.get('category')
+    enabled_param = request.args.get('enabled')
+    
+    enabled = None
+    if enabled_param is not None:
+        enabled = enabled_param.lower() == 'true'
+    
+    result = get_access_list_data(list_type, category, enabled)
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
+@app.route('/api/access-list', methods=['POST'])
+@login_required
+def create_access_list_entry():
+
+    """Create a new access list entry"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    value = (data.get('value') or '').strip()
+    name = data.get('category')+"_"+(data.get('name') or '').strip()
+    list_type = (data.get('type') or '').strip()
+
+    if not value:
+        return jsonify({'success': False, 'error': 'Value is required'}), 400
+    # if list_type not in ('block', 'white'):
+    #     return jsonify({'success': False, 'error': 'Type must be "block" or "white"'}), 400
+
+    db_session = db.get_session()
+    try:
+        entry = AccessList(
+            name=name,
+            value=value,
+            type=list_type,
+            category=(data.get('category') or '').strip() or None,
+            enabled=bool(data.get('enabled', True)),
+            reason=(data.get('reason') or '').strip() or None,
+            source=(data.get('source') or '').strip() or None,
+            hit_count=0,
+            created_by=session.get('user_id', 0),
+        )
+        db_session.add(entry)
+        db_session.commit()
+        log_audit('CREATE_ACCESS_LIST', f'Access list entry "{name}{value}" (type={list_type}) created by "{session.get("username")}"')
+        logger.info(f'fun:create_access_list_entry:Creating access list entry: {name}{value} created by {session.get("username")}')
+        return jsonify({'success': True, 'entry': entry.to_dict()}), 201
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'fun:create_access_list_entry:Error creating access list entry: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/access-list/<int:entry_id>', methods=['PATCH'])
+@login_required
+def update_access_list_entry(entry_id):
+
+    """Update an existing access list entry"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    db_session = db.get_session()
+    try:
+        entry = db_session.query(AccessList).filter_by(id=entry_id).first()
+        if not entry:
+            return jsonify({'success': False, 'error': 'Entry not found'}), 404
+
+        if 'name' in data:
+            entry.name = (data['name'] or '').strip()
+
+
+        if 'value' in data:
+            v = (data['value'] or '').strip()
+            if not v:
+                return jsonify({'success': False, 'error': 'Value cannot be empty'}), 400
+            entry.value = v
+
+        if 'type' in data:
+            t = (data['type'] or '').strip()
+            # if t not in ('block', 'white', 'list'):
+            # if t not in ('block', 'white', 'list'):    
+            #     return jsonify({'success': False, 'error': 'Type must be "block" or "white"'}), 400
+            entry.type = t
+
+        if 'category' in data:
+            entry.category = (data['category'] or '').strip() or None
+
+        if 'enabled' in data:
+            entry.enabled = bool(data['enabled'])
+
+        if 'reason' in data:
+            entry.reason = (data['reason'] or '').strip()
+
+        if 'source' in data:
+            entry.source = (data['source'] or '').strip() or None
+
+
+        db_session.commit()
+        log_audit('UPDATE_ACCESS_LIST', f'Access list entry id={entry_id} updated by "{session.get("username")}"')
+        logger.info(f'fun:update_access_list_entry:Updating access list entry: list entry id={entry_id} updated by {session.get("username")}')
+        return jsonify({'success': True, 'entry': entry.to_dict()})
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'fun:update_access_list_entry:Error updating access list entry: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/api/access-list/<int:entry_id>', methods=['DELETE'])
+@login_required
+def delete_access_list_entry(entry_id):
+
+    """Delete an access list entry"""
+    db_session = db.get_session()
+    try:
+        entry = db_session.query(AccessList).filter_by(id=entry_id).first()
+        if not entry:
+            return jsonify({'success': False, 'error': 'Entry not found'}), 404
+        value = entry.value
+        db_session.delete(entry)
+        db_session.commit()
+        log_audit('DELETE_ACCESS_LIST', f'Access list entry "{value}" (id={entry_id}) deleted by "{session.get("username")}"')
+        logger.info(f'fun:delete_access_list_entry:Delete access list entry {value}  deleted by {session.get("username")}')
+        return jsonify({'success': True, 'message': f'Entry "{value}" deleted successfully'})
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f'fun:delete_access_list_entry:Error deleting access list entry: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         db_session.close()
@@ -3037,7 +3701,8 @@ def main():
     # Database and Victoria Metrics are already initialized in create_app()
     logger.info(f'Starting Dnsdist Web Console on {settings.CONSOLE_HOST}:{settings.CONSOLE_PORT}')
     logger.info(f'Using database: {settings.DATABASE_URL}')
-
+    logger.debug(f"Start with debug={settings.DEBUG}")
+    logger.info(f"Log lovel: {settings.LOG_LEVEL}")
     app.run(host=settings.CONSOLE_HOST, port=settings.CONSOLE_PORT, debug=settings.DEBUG)
 
 

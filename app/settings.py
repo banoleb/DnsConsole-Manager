@@ -6,11 +6,11 @@ All settings can be overridden via environment variables
 
 import logging
 import os
-
+import sys
 
 class Settings:
     """Configuration settings with defaults and environment variable support"""
-    TIMEOUT_AGENT = int(os.environ.get('TIMEOUT_AGENT', 3))
+    TIMEOUT_AGENT = int(os.environ.get('TIMEOUT_AGENT', 2))
     # Web API Server settings
     WEBAPI_PORT = int(os.environ.get('WEBAPI_PORT', '8080'))
     WEBAPI_HOST = os.environ.get('WEBAPI_HOST', '0.0.0.0')
@@ -23,6 +23,8 @@ class Settings:
     DNSDIST_CONSOLE_HOST = os.environ.get('DNSDIST_CONSOLE_HOST', '127.0.0.1')
     DNSDIST_CONSOLE_PORT = int(os.environ.get('DNSDIST_CONSOLE_PORT', '5199'))
     DNSDIST_KEY = os.environ.get('DNSDIST_KEY')  # Encryption key for console (optional)
+    # for syncer.sh script - run background sync 
+    DNSDIST_SYNCER_TOKEN = os.environ.get('DNSDIST_SYNCER_TOKEN','32c7002bdfae61eceefa36b10bd1e950520527c1a60292d1daa4f86326de3324') # token for syncer.sh
 
     # -------------------------------------------------------------------------
     # Authentication settings
@@ -37,14 +39,14 @@ class Settings:
     # Local username/password authentication
     # Set AUTH_ENABLED=false to disable the login form entirely (e.g. when
     # using OIDC as the sole auth method or running in a fully-trusted network).
-    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'true').lower() in ('true', '1', 'yes')
+    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() in ('true', '1', 'yes')
 
     # -------------------------------------------------------------------------
     # OpenID Connect (OIDC / OAuth 2.0) SSO settings
     # -------------------------------------------------------------------------
     # Set OIDC_ENABLED=true to activate SSO via any OpenID Connect provider
     # (e.g. Keycloak, Azure AD, Google, Okta, Authentik …).
-    OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'true').lower() in ('true', '1', 'yes')
+    OIDC_ENABLED = os.environ.get('OIDC_ENABLED', 'false').lower() in ('true', '1', 'yes')
 
     # Base URL of the OIDC provider.
     # The discovery document is fetched from <OIDC_PROVIDER_URL>/.well-known/openid-configuration
@@ -108,6 +110,29 @@ class Settings:
 
     @classmethod
     def configure_logging(cls):
+
+        if 'gunicorn' in sys.modules:
+            gunicorn_logger = logging.getLogger('gunicorn.error')
+            
+            root_logger = logging.getLogger()
+            root_logger.handlers = gunicorn_logger.handlers
+            root_logger.setLevel(cls.get_log_level())
+            
+            flask_logger = logging.getLogger('flask')
+            flask_logger.handlers = gunicorn_logger.handlers
+            flask_logger.setLevel(cls.get_log_level())
+            
+            app_logger = logging.getLogger('app')
+            app_logger.handlers = gunicorn_logger.handlers
+            app_logger.setLevel(cls.get_log_level())
+        else:
+
+            logging.basicConfig(
+                level=cls.get_log_level(),
+                format=cls.LOG_FORMAT
+
+            )
+
         """Configure logging based on settings"""
         logging.basicConfig(
             level=cls.get_log_level(),

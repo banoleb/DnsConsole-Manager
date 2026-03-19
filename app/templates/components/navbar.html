@@ -1,4 +1,4 @@
-
+<div style="display: flex;">
 <span class="navbar-brand">DnsConsole-Manager</span>
 <div class="navbar-sync-status">
     <span class="sync-status-label" style="margin-right: 20px;">
@@ -13,14 +13,7 @@
 
     </span>
 
-    <div v-if="syncStatus.status === 'Failed'" class="tooltip-container">
-        <span class="help-icon">?</span>
-        <span class="tooltip-text">{{ syncStatus.error_message  }}</span>
-    </div>
-    <div v-if="syncStatus.status === 'Partial'" class="tooltip-container">
-        <span class="help-icon">?</span>
-        <span class="tooltip-text">{{ syncStatus.error_message  }}</span>
-    </div>
+
 </div>
 <div class="navbar-buttons">
     <a href="/" :class="['btn', 'btn-sm', { active: isActivePage('/') }]" style="text-decoration: none; color: inherit;">Dashboard</a>
@@ -46,11 +39,29 @@
     <button class="btn btn-sm" @click="toggleTheme" :title="isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'">
         {{ isDarkTheme ? '☀️' : '🌙' }}
     </button>
-    <a href="https://github.com/banoleb/dnsdist-webapi" class="btn btn-sm" style="text-decoration: none; color: inherit;">v0.0.3</a>
+    <a href="https://github.com/banoleb/DnsConsole-Manager/" class="btn btn-sm" style="text-decoration: none; color: inherit;">v0.0.4</a>
 
 </div>
+
+
+
+
+</div>
+
 <div class="sync-progress-container">
     <div :class="getBackendStatusClassLoader(backendHealth.status)" :style="{ width: syncProgress + '%' }"></div>
 </div>
 
+<div v-if="showTooltip" class="tooltip-content" style="background-color: var(--bg-color-alert)">
+        <div v-if="syncStatus.status === 'Failed'" >
+            <span >{{ syncStatus.error_message  }}</span>
+            <button @click="showTooltip = false" class="btn btn-sm">Close</button>
+        </div>
+        <div v-if="syncStatus.status === 'Partial'" >
+            <span >{{ syncStatus.error_message  }}</span>
+            <button @click="showTooltip = false" class="btn btn-sm">Close</button>
+        </div>
+
+
+</div>
 
