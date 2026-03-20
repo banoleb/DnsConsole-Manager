@@ -83,10 +83,12 @@ systemctl restart dnsdist
 
 1. pull project
 
-2.
+2. Generate ssl cert for agent
+```bash
 openssl req -x509 -newkey rsa:4096 -nodes  -out cert.pem -keyout key.pem  -days 9999   -config san.cnf -extensions v3_req
+```
 
-2. Install Python dependencies:
+3. Install Python dependencies:
 
 ```bash
 pip3 install -r requirements.txt
