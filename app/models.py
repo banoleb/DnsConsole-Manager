@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from model_utils import (ComparableMixin, DateTimeSerializableMixin,
                          ValidationMixin)
 from settings import settings
-from sqlalchemy import (Boolean, Column, DateTime, Enum, ForeignKey, Integer,
-                        String, Text, create_engine)
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String,
+                        Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -86,7 +86,8 @@ class Agent(Base, DateTimeSerializableMixin):
 
     def get_url(self):
         """Get the full URL for the agent"""
-        protocol = 'https' if self.agent_port == 443 else 'http'
+        # protocol = 'https' if self.agent_port == 8085 else 'http'
+        protocol = 'https'
         return f'{protocol}://{self.agent_ip}:{self.agent_port}'
 
 
@@ -675,7 +676,7 @@ class AccessList(Base, DateTimeSerializableMixin):
     __tablename__ = 'access_list'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)    
+    name = Column(String(255), nullable=False)
     value = Column(String(255), nullable=False)
     type = Column(String(255), nullable=False)
     category = Column(String(50), nullable=True)
@@ -707,10 +708,10 @@ class AccessList(Base, DateTimeSerializableMixin):
 
 class ManagerList(Base, DateTimeSerializableMixin):
     __tablename__ = 'manager_list'
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    agent_name = Column(String(255), nullable=False)  
+    agent_name = Column(String(255), nullable=False)
     value = Column(String(255), nullable=False)
     category = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
@@ -725,9 +726,10 @@ class ManagerList(Base, DateTimeSerializableMixin):
             'category': self.category,
             'created_at': self._serialize_datetime(self.created_at),
         }
+
     def __repr__(self):
         return f'<ManagerList {self.name}: {self.value}>'
-    
+
 
 # Database configuration
 class Database:
@@ -766,7 +768,7 @@ class Database:
         session = self.SessionLocal()
         try:
             if session.query(User).count() == 1:
-                syncer = User(username='syncer', is_active=True, api_token = settings.DNSDIST_SYNCER_TOKEN)
+                syncer = User(username='syncer', is_active=True, api_token=settings.DNSDIST_SYNCER_TOKEN)
                 syncer.set_password('syncer')
 
                 session.add(syncer)

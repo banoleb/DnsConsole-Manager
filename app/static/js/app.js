@@ -555,7 +555,7 @@ createApp({
                         output += '</details>';
 
                         this.agentOutputs[index] = output;
-                    }                     
+                    }
                     else
                     {
                         this.agentOutputs[index] = `<span style="color: #28a745;">✓ Success</span>\n`+'\nCommand: '+command+`\n${this.escapeHtml(data.result || 'Command executed successfully')}`;

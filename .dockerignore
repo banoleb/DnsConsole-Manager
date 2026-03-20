@@ -50,3 +50,6 @@ token-generate.py
 # Config examples
 example-dnsdist.conf
 webapi.lua
+
+cert.pem
+key.pem

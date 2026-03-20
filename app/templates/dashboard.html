@@ -93,7 +93,7 @@
                                             :key="agent.id"
                                             class="topology-agent-node"
                                             :class="getAgentNodeClass(agent)"
-                                            
+
                                         >
                                             <div class="topo-agent-name">
                                                 <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
@@ -154,14 +154,14 @@
 
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-rules">
-                                                     📋 {{ getRulesCount(agent.name) }} rules 
+                                                     📋 {{ getRulesCount(agent.name) }} rules
                                                 </span>
                                             </div>
                                             <!-- Rules list if any -->
                                             <div class="topo-rules-list">
                                                 <div  v-for="rule in getAgentRules(agent.name)">
                                                 <div v-if="rule.has_synced === 1"
-                                                    
+
                                                     :key="rule.id"
                                                     class="topo-dynblock-chip"
                                                     :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches">
@@ -169,11 +169,11 @@
                                                 </div>
 
                                             <div v-if="rule.has_synced === 0"
-                                            
+
                                             :key="rule.id"
                                             class="topo-rule-chip"
                                             :title="rule.rule + ' → '+ 'action:' + rule.action + ' → '+ 'matches:'  + rule.matches">
-                                    
+
                                                 <div >
                                                 <span ><a style="color: var(--text-color)" :href="'/rules/' + rule.uuid" >{{ rule.name || rule.uuid || (rule.rule_id != null ? '#' + rule.rule_id : 'Unknown') }}</a></span>
                                                 </div>
@@ -183,7 +183,7 @@
                                             </div>
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-servers">
-                                                     🖥️ {{ getServersCount(agent.name) }} servers 
+                                                     🖥️ {{ getServersCount(agent.name) }} servers
                                                 </span>
                                             </div>
                                             <!-- agentsServers list if any -->
@@ -201,7 +201,7 @@
                                             <!-- <div class="topo-agent-url"><a :href="agent.url+'/health'">{{ agent.url }}</a></div> -->
                                             <div class="topo-agent-badges">
                                                 <span class="topo-badge topo-badge-list">
-                                                     📃 {{ getAccessListCount(agent.name) }} Access list 
+                                                     📃 {{ getAccessListCount(agent.name) }} Access list
                                                 </span>
                                             </div>
                                             <div class="topo-rules-list">
@@ -211,9 +211,9 @@
                                                 class="topo-rule-chip"
                                                 :title="rule.name+ ' → '+ 'category:' + rule.category + ' created_at: ' + rule.created_at +' '+ rule.agent_name"
                                             >
-                                            
+
                                                 <span class="topo-rule-name"><a style="color: var(--text-color)" :href="'dynblock-rules?tab=access'" >{{ rule.name }} : {{ rule.value }}</a></span>
-                                               
+
                                                 </div>
                                             </div>
                                     </div>
@@ -286,8 +286,8 @@
                                     </td>
                                     <td>
                                         <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
-                                        <span 
-                                        class="badge" 
+                                        <span
+                                        class="badge"
                                         :class="{
                                             'badge-success': agent.status === 'online',
                                             'badge-secondary': agent.status === 'offline',

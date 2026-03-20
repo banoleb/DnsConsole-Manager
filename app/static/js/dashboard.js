@@ -63,7 +63,7 @@ Vue.createApp({
         activeDynblockRules() {
             return this.dynblockRules.filter(r => r.is_active).length;
         },
-        
+
     },
     methods: {
         async fetchAll() {
@@ -86,7 +86,7 @@ Vue.createApp({
                 const res = await fetch('/api/agents');
                 const data = await res.json();
                 this.agents = Array.isArray(data) ? data : [];
-                
+
             } catch (e) {
                 console.error('Error fetching agents:', e);
             }
@@ -138,10 +138,10 @@ Vue.createApp({
                 console.error('Error fetching accesslist:', e);
             }
         },
-        
+
         getRulesCount(agentName) {
             const ar = this.agentsRules.find(r => r.agent_name === agentName);
-          
+
             return ar ? (ar.rules_count || 0) : 0;
         },
         getAgentRules(agentName) {
@@ -160,18 +160,18 @@ Vue.createApp({
         getGroupAgents(groupId) {
 
             let agents = this.agents.filter(a => a.group_id === groupId);
-            
+
 
             if (this.showActiveOnly) {
                 agents = agents.filter(a => a.is_active === true);
             }
-            
+
             const statusPriority = {
                 'online': 1,
-                'offline': 2, 
+                'offline': 2,
                 'disabled': 3
             };
-            
+
             return agents.sort((a, b) => {
                 const statusDiff = statusPriority[a.status] - statusPriority[b.status];
                 if (statusDiff === 0) {

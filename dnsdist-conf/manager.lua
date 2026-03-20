@@ -14,7 +14,7 @@ end
 
 function ListManager:remove_list(list_name)
   if self.lists[list_name] then
-    self.lists[list_name] = nil 
+    self.lists[list_name] = nil
     out = list_name .. "Deleted\n"
     return out
   else
@@ -27,20 +27,20 @@ function ListManager:add(list_name, value)
   if not self.lists[list_name] then
     self.lists[list_name] = {}
   end
-  
+
   for _, v in ipairs(self.lists[list_name]) do
     if v == value then
       return "Value already exists in " .. list_name .. ": " .. value
     end
   end
-  
+
   table.insert(self.lists[list_name], value)
   return "Add Done: " .. list_name .. " " .. value
 end
 
 function ListManager:remove(list_name, value)
   if not self.lists[list_name] then return false end
-  
+
   for i, v in ipairs(self.lists[list_name]) do
     if v == value then
       table.remove(self.lists[list_name], i)
@@ -54,7 +54,7 @@ end
 
 function ListManager:show_all()
   local out = ""
-  
+
   for name, data in pairs(self.lists) do
     out = out .. "[" .. name .. "]\n"
     for i, value in ipairs(data) do
@@ -63,11 +63,11 @@ function ListManager:show_all()
     end
       out = out .. "\n"
   end
-  
+
   if out == "" then
     out = "Empty lists"
   end
-  
+
   return out
 end
 
@@ -75,12 +75,12 @@ function ListManager:show_list(list_name)
   if not self.lists[list_name] then
     return "List '" .. list_name .. "' not found\n"
   end
-  
+
   local out = "[" .. list_name .. "]\n"
   for i, value in ipairs(self.lists[list_name]) do
     out = out .. "  " .. i .. ". " .. value .. "\n"
   end
-  
+
   return out
 end
 

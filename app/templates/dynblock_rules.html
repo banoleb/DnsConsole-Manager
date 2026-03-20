@@ -9,7 +9,7 @@
     <div id="app2">
         <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
             {% include 'components/navbar.html' %}
-        </nav>       
+        </nav>
     </div>
     <div></div>
     <div id="app">
@@ -172,7 +172,7 @@
                         </table>
                         <div class="mb-3" style="position: relative;">
                             <label class="form-label">
-                                Rule Command <span class="required">*</span> 
+                                Rule Command <span class="required">*</span>
                             </label>
                             <input
                                 type="text"
@@ -187,7 +187,7 @@
                                 autocomplete="off"
                                 style="width: 90%;"
                             />
-                            
+
                             <button class="btn btn-primary" @click="activeTab = 'templatetab'; " style="width: 10%;" >(Add-Edit link) </button>
                             <small class="form-text text-muted">
                                 Start typing to see template suggestions. Use arrow keys to navigate and Enter to select.
@@ -268,7 +268,7 @@
                                     :key="rule.id"
                                     style="border-bottom: 2px dashed var(--btn-hover-border);"
                                 >
-                                
+
                                     <td style="padding: 0.75rem;">
                                         {{ rule.name || '-' }}
                                     </td>
@@ -336,7 +336,7 @@
                         <form @submit.prevent="alSubmitForm">
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div class="mb-3">
-                                   
+
                                     <label class="form-label" >Name <span class="text-muted">(group label)</span></label>
                                     <input  class="form-control"  type="text" readonly="true" value="webconsole_lists." style="width: 20%;">
                                     <input
@@ -453,13 +453,13 @@
                                         <th>Category</th>
                                         <th>Enabled</th>
                                         <th>Reason</th>
-                   
+
                                         <th>Created</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="entry in alEntries" :key="entry.id" style="border-bottom: 2px dashed var(--btn-hover-border);"> 
+                                    <tr v-for="entry in alEntries" :key="entry.id" style="border-bottom: 2px dashed var(--btn-hover-border);">
                                         <td>{{ entry.id }}</td>
                                         <td>webconsole_lists.{{ entry.name || '-' }}</td>
                                         <td style="font-family:monospace;">{{ entry.value }}</td>
@@ -477,7 +477,7 @@
                                         </td>
 
                                         <td :title="entry.reason">{{ alTruncate(entry.reason, 30) }}</td>
-            
+
                                         <td>{{ alFormatDateTime(entry.created_at) }}</td>
                                         <td style="white-space:nowrap;">
                                             <button class="btn btn-sm btn-info" @click="alStartEdit(entry)" style="margin-right:0.3rem;">✏️ Edit</button>
@@ -489,7 +489,7 @@
                         </div>
                     </div>
                 </div>
-            </div> 
+            </div>
 
             <!-- TAB 4: HELP                                -->
             <!-- ======================================================= -->
@@ -588,7 +588,7 @@
                                     </div>
                                 </div>
 
-                  
+
                             <!-- Existing Templates List -->
 
                     </div>
@@ -597,7 +597,7 @@
                     <div class="card mb-4">
 
 
-                      
+
                                     <div class="card-header primary">
                                         <h6>📋 Existing Templates</h6>
                                     </div>

@@ -23,14 +23,14 @@
     <a href="/summary" :class="['btn', 'btn-sm', { active: isActivePage('/summary') }]" style="text-decoration: none; color: inherit;">Summary Clients</a>
     <a href="/audit" :class="['btn', 'btn-sm', { active: isActivePage('/audit') }]" style="text-decoration: none; color: inherit;">Audit</a>
     <!-- <a href="/users" :class="['btn', 'btn-sm', { active: isActivePage('/users') }]" style="text-decoration: none; color: inherit;">Users</a> -->
-    <a href="/users" 
+    <a href="/users"
     :class="['btn', 'btn-sm', { active: isActivePage('/users') }]"
     style="text-decoration: none; color: inherit;"
     v-if="authEnabled">
     Users
     </a>
-    <a href="/logout" 
-    class="btn btn-outline-secondary btn-sm ms-2" 
+    <a href="/logout"
+    class="btn btn-outline-secondary btn-sm ms-2"
     v-if="authEnabled"
     style="text-decoration: none; color: inherit;"
     title="Sign out">
@@ -64,4 +64,3 @@
 
 
 </div>
-

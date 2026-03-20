@@ -27,7 +27,7 @@
                     placeholder="Search rules by agent, name, rule, action..."
                     style="max-width: 600px;"
                 />
-           
+
             <label class="form-check-label" style=" align-items: center; gap: 6px; cursor: pointer;">
                 <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
                 Online Agents only
@@ -119,14 +119,14 @@
                                     <td style="padding: 0.33rem;">{{ rule.creation_order }}</td>
                                     <td style="padding: 0.33rem;">{{ rule.matches }}</td>
                                     <td style="padding: 0.33rem;"><code style="font-size: 0.85rem; word-break: break-word;">{{ rule.rule }}</code> ⏩<code style="font-size: 0.85rem; word-break: break-word;">{{ rule.action }}</code>
-                                    
+
                                         <div  class="tooltip-container">
                                             <span class="help-icon-dist">?</span>
                                             <span class="tooltip-text">Updated: {{ formatDate(rule.updated_at) }}</span>
                                             </div>
-                                    
+
                                     </td>
-                                    
+
                                     <td style="padding: 0.33rem; text-align: center;">
                                         <div  class="tooltip-container">
                                             <div v-if="rule.agent_online === 0 "  >

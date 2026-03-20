@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 
+
 class Settings:
     """Configuration settings with defaults and environment variable support"""
     TIMEOUT_AGENT = int(os.environ.get('TIMEOUT_AGENT', 2))
@@ -23,8 +24,9 @@ class Settings:
     DNSDIST_CONSOLE_HOST = os.environ.get('DNSDIST_CONSOLE_HOST', '127.0.0.1')
     DNSDIST_CONSOLE_PORT = int(os.environ.get('DNSDIST_CONSOLE_PORT', '5199'))
     DNSDIST_KEY = os.environ.get('DNSDIST_KEY')  # Encryption key for console (optional)
-    # for syncer.sh script - run background sync 
-    DNSDIST_SYNCER_TOKEN = os.environ.get('DNSDIST_SYNCER_TOKEN','32c7002bdfae61eceefa36b10bd1e950520527c1a60292d1daa4f86326de3324') # token for syncer.sh
+    # for syncer.sh script - run background sync
+    # token for syncer.sh
+    DNSDIST_SYNCER_TOKEN = os.environ.get('DNSDIST_SYNCER_TOKEN', '32c7002bdfae61eceefa36b10bd1e950520527c1a60292d1daa4f86326de3324')
 
     # -------------------------------------------------------------------------
     # Authentication settings
@@ -113,15 +115,15 @@ class Settings:
 
         if 'gunicorn' in sys.modules:
             gunicorn_logger = logging.getLogger('gunicorn.error')
-            
+
             root_logger = logging.getLogger()
             root_logger.handlers = gunicorn_logger.handlers
             root_logger.setLevel(cls.get_log_level())
-            
+
             flask_logger = logging.getLogger('flask')
             flask_logger.handlers = gunicorn_logger.handlers
             flask_logger.setLevel(cls.get_log_level())
-            
+
             app_logger = logging.getLogger('app')
             app_logger.handlers = gunicorn_logger.handlers
             app_logger.setLevel(cls.get_log_level())

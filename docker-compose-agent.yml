@@ -16,6 +16,9 @@ services:
     # or use in .env file
     # env_file:
     #   - .env
+    volumes:
+      - ./cert.pem:/app/cert.pem
+      - ./key.pem:/app/key.pem
     restart: unless-stopped
     command: agent
 

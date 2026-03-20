@@ -83,6 +83,9 @@ systemctl restart dnsdist
 
 1. pull project
 
+2.
+openssl req -x509 -newkey rsa:4096 -nodes  -out cert.pem -keyout key.pem  -days 9999   -config san.cnf -extensions v3_req
+
 2. Install Python dependencies:
 
 ```bash
@@ -191,7 +194,7 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
 # use seed_data.psql.sql for psql
 psql -h server-psql -U psql -d psql -f db/seed_data.psql.sql
 
-# use seed_data.sqlite.sql for sqlite 
+# use seed_data.sqlite.sql for sqlite
 cd app
 python3 init_db.py # create empty
 # or add some seed data

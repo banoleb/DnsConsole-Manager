@@ -20,6 +20,7 @@ import json
 import logging
 import secrets
 import socket
+import ssl
 import struct
 import time
 from datetime import datetime
@@ -437,7 +438,13 @@ def main():
     server_address = (args.host, args.port)
     httpd = HTTPServer(server_address, APIHandler)
 
-    logger.info(f'Starting dnsdist Web API server on {args.host}:{args.port}')
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain('cert.pem', 'key.pem')
+
+    # Применяем к сокету
+    httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+
+    logger.info(f'Starting dnsdist Web API HTTPS server on {args.host}:{args.port}')
     logger.info(f'Using dnsdist console: {console_host}:{console_port}')
     if key:
         logger.info('Using encryption key for console authentication')

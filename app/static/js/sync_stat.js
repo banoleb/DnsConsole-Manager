@@ -167,5 +167,5 @@ Vue.createApp({
             clearInterval(this.backendHealthInterval);
         }
     }
-    
+
 }).mount('#app2');

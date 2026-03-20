@@ -1,0 +1,22 @@
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = v3_req
+
+[dn]
+C=AR
+ST=Armenia
+L=Ereven
+O=Company
+CN=localhost
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = localhost
+DNS.2 = myagent.local
+IP.1 = 192.168.1.101
+IP.2 = 192.168.1.100

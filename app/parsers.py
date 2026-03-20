@@ -1,8 +1,9 @@
-import re
-import configparser
-from io import StringIO
 import logging
+import re
+
 logger = logging.getLogger('web-console-manager')
+
+
 def parse_showrules_output(output):
     """
     Parse showRules() command output into structured JSON format
@@ -44,7 +45,6 @@ def parse_showrules_output(output):
                     'rule': rule.strip(),
                     'action': action.strip()
                 }
-                #print(rule)
                 rules.append(rule)
             else:
                 # Try a simpler pattern for lines without names
@@ -396,13 +396,11 @@ def parse_with_configparser(content):
     config = {}
     current_section = None
     section_pattern = re.compile(r'^\[(.*)\]$')
-    
+
     lines = content.strip().split('\n')
-    
+
     for line_num, line in enumerate(lines, 1):
         line = line.strip()
-        
-
         if not line:
             continue
         if line == 'Empty lists':

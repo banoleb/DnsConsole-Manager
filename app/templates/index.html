@@ -30,19 +30,19 @@
                             <button class="btn-command show" @click="sendBroadcastCommand('showPools()')">
                                 showPools()
                             </button>
-                            
+
                             <button class="btn-command show" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">
                                 showServers()
                             </button>
-                            
+
                             <button class="btn-command top" @click="sendBroadcastCommand('topClients()')">
                                 topClients()
                             </button>
-                            
+
                             <button class="btn-command top" @click="sendBroadcastCommand('topResponses(10)')">
                                 topResponses(10)
                             </button>
-                            
+
                             <button class="btn-command dump" @click="sendBroadcastCommand('dumpStats()')">
                                 dumpStats()
                             </button>
@@ -111,8 +111,8 @@
                 <div class="navbar-buttons" style="border-bottom: 1px solid var(--border-color);">
                     <div  v-if="isOneAgentPage">
                         <button class="btn btn-sm"   @click="AhrefgoToAgents">Show All Agents</button>
-                   
-    
+
+
                     </div>
                     <button class="btn btn-sm" @click="showAgentsModal">Configure AGENTS</button>
                     <button class="btn btn-sm" @click="showHelpModal">Help</button>
@@ -180,9 +180,9 @@
                             <span v-if="agent.group_name" class="badge badge-group">
                                 {{ agent.group_name }}
                             </span>
-                           
-                            <span 
-                            class="badge" 
+
+                            <span
+                            class="badge"
                             :class="{
                                 'badge-success': agent.status === 'online',
                                 'badge-secondary': agent.status === 'offline',
@@ -206,7 +206,7 @@
                     <transition name="collapse">
                         <div v-if="expandedAgents[agent.originalIndex]" class="card-body">
                                 <div class="mb-3">
-  
+
                                 <div class="command-cloud">
                                     <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'manager:show_all()')">
                                         manager:show_all()
@@ -214,23 +214,23 @@
                                     <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">
                                         showRules()
                                     </button>
-                                    
+
                                     <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showPools()')">
                                         showPools()
                                     </button>
-                                    
+
                                     <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">
                                         showServers()
                                     </button>
-                                    
+
                                     <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topClients()')">
                                         topClients()
                                     </button>
-                                    
+
                                     <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
                                         topResponses(10)
                                     </button>
-                                    
+
                                     <button class="btn-command dump" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
                                         dumpStats()
                                     </button>
@@ -315,30 +315,25 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    topo-dynblock-chip
-
-                                                    
                                                     <tr v-for="rule in getRules(agent.id)" :key="rule.id" :class="{ 'topo-dynblock-chip': rule.has_synced === 1 }">
                                                         <td>{{ rule.rule_id }}</td>
                                                         <td><span v-if="rule.has_synced === 1" >🛡️</span>{{ rule.name || '-' }}
                                                         </td>
-
                                                         <td><a :href="'/rules/' + rule.uuid" >{{ rule.uuid || '-' }}</a></td>
                                                         <td ><span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
                                                         <span v-else>-</span>
                                                         </td>
                                                         <td>{{ rule.creation_order || '-' }}</td>
                                                         <td>{{ rule.matches }}</td>
-                                                        <!-- <code>{{ truncate(rule.rule, 40) }}</code> -->
                                                         <td> <code>{{ rule.rule.length > 40 ? rule.rule.substring(0, 40) + '...' : rule.rule }}</code></td>
                                                         <td><code>{{ rule.action }}</code></td>
                                                         <td>
-                                                            <div class="buttons-tab-small">
-                                                                        <div  v-if="rule.has_synced === 0" >
-                                                                            <button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button></div>
+                                                        <div class="buttons-tab-small">
+                                                                <div  v-if="rule.has_synced === 0" >
+                                                                <button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button></div>
 
-                                                                    <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button>
-                                                                </div>
+                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button>
+                                                        </div>
                                                     </td>
 
                                                     </tr>
@@ -421,7 +416,7 @@
                                                     <tr>
                                                         <th style="width: 10%;">Rank</th>
                                                         <th style="width: 30%;">Client</th>
-                                                      
+
                                                         <th style="width: 20%;">Queries</th>
                                                         <th style="width: 20%;">Percentage</th>
                                                         <th style="width: 20%;">Actions</th>
