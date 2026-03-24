@@ -32,10 +32,7 @@ Vue.createApp({
       return this.agents.filter((a) => !a.group_id);
     },
     totalRules() {
-      return this.agentsRules.reduce(
-        (sum, ar) => sum + (ar.rules_count || 0),
-        0,
-      );
+      return this.agentsRules.reduce((sum, ar) => sum + (ar.rules_count || 0), 0);
     },
 
     totalServers() {
@@ -97,8 +94,7 @@ Vue.createApp({
       try {
         const res = await fetch("/api/groups");
         const data = await res.json();
-        this.groups =
-          data.success && Array.isArray(data.groups) ? data.groups : [];
+        this.groups = data.success && Array.isArray(data.groups) ? data.groups : [];
       } catch (e) {
         console.error("Error fetching groups:", e);
       }
@@ -107,10 +103,7 @@ Vue.createApp({
       try {
         const res = await fetch("/api/agents/rules");
         const data = await res.json();
-        this.agentsRules =
-          data.success && Array.isArray(data.agents_rules)
-            ? data.agents_rules
-            : [];
+        this.agentsRules = data.success && Array.isArray(data.agents_rules) ? data.agents_rules : [];
       } catch (e) {
         console.error("Error fetching agents rules:", e);
       }
@@ -119,10 +112,7 @@ Vue.createApp({
       try {
         const res = await fetch("/api/agents/servers");
         const data = await res.json();
-        this.agentsServers =
-          data.success && Array.isArray(data.agents_servers)
-            ? data.agents_servers
-            : [];
+        this.agentsServers = data.success && Array.isArray(data.agents_servers) ? data.agents_servers : [];
       } catch (e) {
         console.error("Error fetching agents servers:", e);
       }
@@ -131,8 +121,7 @@ Vue.createApp({
       try {
         const res = await fetch("/api/dynblock-rules");
         const data = await res.json();
-        this.dynblockRules =
-          data.success && Array.isArray(data.rules) ? data.rules : [];
+        this.dynblockRules = data.success && Array.isArray(data.rules) ? data.rules : [];
       } catch (e) {
         console.error("Error fetching dynblock rules:", e);
       }
@@ -141,10 +130,7 @@ Vue.createApp({
       try {
         const res = await fetch("/api/managerlist");
         const data = await res.json();
-        this.accessLists =
-          data.success && Array.isArray(data.managerlist)
-            ? data.managerlist
-            : [];
+        this.accessLists = data.success && Array.isArray(data.managerlist) ? data.managerlist : [];
         // console.log(this.accessLists);
       } catch (e) {
         console.error("Error fetching accesslist:", e);

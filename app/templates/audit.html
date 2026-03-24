@@ -7,9 +7,7 @@
   <body>
     <!-- Navbar -->
     <div id="app2">
-      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
-        {% include 'components/navbar.html' %}
-      </nav>
+      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
 
     <div id="app">
@@ -17,21 +15,13 @@
       <div class="container">
         <!-- Audit Logs Table -->
         <div class="card">
-          <div
-            class="card-header primary"
-            style="
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            "
-          >
+          <div class="card-header primary" style="display: flex; justify-content: space-between; align-items: center">
             <h6>Audit History</h6>
             <button
               class="btn btn-danger btn-sm"
               @click="clearOldLogs"
               :disabled="clearing"
-              title="Delete audit logs older than 3 days"
-            >
+              title="Delete audit logs older than 3 days">
               {{ clearing ? 'Clearing...' : 'Clear Old Logs (3+ days)' }}
             </button>
           </div>
@@ -65,40 +55,22 @@
               </div>
 
               <!-- Pagination -->
-              <div
-                class="pagination-container"
-                v-if="pagination.total_pages > 1"
-              >
-                <button
-                  class="btn btn-sm"
-                  @click="loadPage(1)"
-                  :disabled="pagination.page === 1"
-                >
-                  First
-                </button>
-                <button
-                  class="btn btn-sm"
-                  @click="loadPage(pagination.page - 1)"
-                  :disabled="!pagination.has_prev"
-                >
+              <div class="pagination-container" v-if="pagination.total_pages > 1">
+                <button class="btn btn-sm" @click="loadPage(1)" :disabled="pagination.page === 1">First</button>
+                <button class="btn btn-sm" @click="loadPage(pagination.page - 1)" :disabled="!pagination.has_prev">
                   Previous
                 </button>
                 <span class="pagination-info">
-                  Page {{ pagination.page }} of {{ pagination.total_pages }} ({{
-                  pagination.total_count }} total records)
+                  Page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_count }} total
+                  records)
                 </span>
-                <button
-                  class="btn btn-sm"
-                  @click="loadPage(pagination.page + 1)"
-                  :disabled="!pagination.has_next"
-                >
+                <button class="btn btn-sm" @click="loadPage(pagination.page + 1)" :disabled="!pagination.has_next">
                   Next
                 </button>
                 <button
                   class="btn btn-sm"
                   @click="loadPage(pagination.total_pages)"
-                  :disabled="pagination.page === pagination.total_pages"
-                >
+                  :disabled="pagination.page === pagination.total_pages">
                   Last
                 </button>
               </div>

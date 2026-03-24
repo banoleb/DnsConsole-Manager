@@ -33,9 +33,7 @@ Vue.createApp({
 
       // Apply agent filter
       if (this.selectedAgent) {
-        filtered = filtered.filter(
-          (client) => client.agent_name === this.selectedAgent,
-        );
+        filtered = filtered.filter((client) => client.agent_name === this.selectedAgent);
       }
 
       // Apply search filter
@@ -43,8 +41,7 @@ Vue.createApp({
         const query = this.clientsSearchQuery.toLowerCase();
         filtered = filtered.filter((client) => {
           return (
-            (client.agent_name &&
-              client.agent_name.toLowerCase().includes(query)) ||
+            (client.agent_name && client.agent_name.toLowerCase().includes(query)) ||
             (client.client && client.client.toLowerCase().includes(query)) ||
             (client.queries && client.queries.toString().includes(query))
           );
@@ -86,9 +83,7 @@ Vue.createApp({
 
       // Apply agent filter
       if (this.selectedAgent) {
-        filtered = filtered.filter(
-          (query) => query.agent_name === this.selectedAgent,
-        );
+        filtered = filtered.filter((query) => query.agent_name === this.selectedAgent);
       }
 
       // Apply search filter
@@ -186,8 +181,7 @@ Vue.createApp({
     },
     sortClientsBy(key) {
       if (this.clientsSortKey === key) {
-        this.clientsSortOrder =
-          this.clientsSortOrder === "asc" ? "desc" : "asc";
+        this.clientsSortOrder = this.clientsSortOrder === "asc" ? "desc" : "asc";
       } else {
         this.clientsSortKey = key;
         this.clientsSortOrder = "asc";
@@ -200,8 +194,7 @@ Vue.createApp({
     },
     sortQueriesBy(key) {
       if (this.queriesSortKey === key) {
-        this.queriesSortOrder =
-          this.queriesSortOrder === "asc" ? "desc" : "asc";
+        this.queriesSortOrder = this.queriesSortOrder === "asc" ? "desc" : "asc";
       } else {
         this.queriesSortKey = key;
         this.queriesSortOrder = "asc";

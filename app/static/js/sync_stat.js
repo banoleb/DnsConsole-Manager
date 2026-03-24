@@ -129,9 +129,7 @@ Vue.createApp({
       if (path === "/") {
         return this.currentPath === "/";
       }
-      return (
-        this.currentPath === path || this.currentPath.startsWith(path + "/")
-      );
+      return this.currentPath === path || this.currentPath.startsWith(path + "/");
     },
   },
   mounted() {

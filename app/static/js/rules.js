@@ -25,8 +25,7 @@ createApp({
         const query = this.searchQuery.toLowerCase();
         filtered = filtered.filter((rule) => {
           return (
-            (rule.agent_name &&
-              rule.agent_name.toLowerCase().includes(query)) ||
+            (rule.agent_name && rule.agent_name.toLowerCase().includes(query)) ||
             (rule.name && rule.name.toLowerCase().includes(query)) ||
             (rule.uuid && rule.uuid.toLowerCase().includes(query)) ||
             (rule.rule && rule.rule.toLowerCase().includes(query)) ||
@@ -74,12 +73,9 @@ createApp({
       this.isRefreshing = true;
       try {
         const pathParts = window.location.pathname.split("/").filter(Boolean);
-        const uuidPattern =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const url =
-          pathParts[0] === "rules" &&
-          pathParts.length === 2 &&
-          uuidPattern.test(pathParts[1])
+          pathParts[0] === "rules" && pathParts.length === 2 && uuidPattern.test(pathParts[1])
             ? `/api/rules/${pathParts[1]}`
             : "/api/rules";
         const response = await fetch(url);

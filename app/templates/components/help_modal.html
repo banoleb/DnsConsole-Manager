@@ -7,24 +7,11 @@
     </div>
     <div class="modal-body">
       <div class="mb-3">
-        <input
-          type="text"
-          class="form-control"
-          v-model="commandSearch"
-          placeholder="Search commands..."
-        />
+        <input type="text" class="form-control" v-model="commandSearch" placeholder="Search commands..." />
       </div>
-      <div v-if="filteredCommands.length === 0" class="alert alert-info">
-        No commands available or no matches found
-      </div>
+      <div v-if="filteredCommands.length === 0" class="alert alert-info">No commands available or no matches found</div>
       <div v-else>
-        <div
-          v-for="command in filteredCommands"
-          :key="command"
-          class="command-item"
-        >
-          {{ command }}
-        </div>
+        <div v-for="command in filteredCommands" :key="command" class="command-item">{{ command }}</div>
       </div>
     </div>
     <div class="modal-footer">

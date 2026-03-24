@@ -7,9 +7,7 @@
   <body>
     <!-- Navbar -->
     <div id="app2">
-      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
-        {% include 'components/navbar.html' %}
-      </nav>
+      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
     <div></div>
     <div id="app">
@@ -25,123 +23,60 @@
                 class="form-control"
                 v-model="searchQuery"
                 placeholder="Search rules by agent, name, rule, action..."
-                style="max-width: 600px"
-              />
+                style="max-width: 600px" />
 
-              <label
-                class="form-check-label"
-                style="align-items: center; gap: 6px; cursor: pointer"
-              >
-                <input
-                  type="checkbox"
-                  class="form-check-input"
-                  v-model="showActiveOnly"
-                />
+              <label class="form-check-label" style="align-items: center; gap: 6px; cursor: pointer">
+                <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
                 Online Agents only
               </label>
             </div>
           </div>
         </div>
         <!-- Rules Table -->
-        <div v-if="loading" class="text-center text-muted">
-          Loading rules...
-        </div>
-        <div v-else-if="filteredRules.length === 0" class="alert alert-info">
-          No rules found
-        </div>
+        <div v-if="loading" class="text-center text-muted">Loading rules...</div>
+        <div v-else-if="filteredRules.length === 0" class="alert alert-info">No rules found</div>
         <div v-else class="card">
           <div class="card-body">
             <div>
               <!-- <div style="overflow-x: auto;"> -->
-              <table
-                class="rules-table"
-                style="width: 100%; border-collapse: collapse"
-              >
+              <table class="rules-table" style="width: 100%; border-collapse: collapse">
                 <thead>
                   <tr>
-                    <th
-                      @click="sortBy('id')"
-                      style="cursor: pointer; width: 2%"
-                    >
-                      ID {{ getSortIcon('id') }}
-                    </th>
-                    <th
-                      @click="sortBy('agent_name')"
-                      style="cursor: pointer; width: 8%"
-                    >
+                    <th @click="sortBy('id')" style="cursor: pointer; width: 2%">ID {{ getSortIcon('id') }}</th>
+                    <th @click="sortBy('agent_name')" style="cursor: pointer; width: 8%">
                       Agent {{ getSortIcon('agent_name') }}
                     </th>
                     <!-- <th @click="sortBy('agent_online')" style="cursor: pointer; width: 8%;">
                                         Online {{ getSortIcon('agent_online') }}
                                     </th> -->
-                    <th
-                      @click="sortBy('name')"
-                      style="cursor: pointer; width: 9%"
-                    >
-                      Name {{ getSortIcon('name') }}
-                    </th>
-                    <th
-                      @click="sortBy('rule_id')"
-                      style="cursor: pointer; width: 2%"
-                    >
+                    <th @click="sortBy('name')" style="cursor: pointer; width: 9%">Name {{ getSortIcon('name') }}</th>
+                    <th @click="sortBy('rule_id')" style="cursor: pointer; width: 2%">
                       Dist ID{{ getSortIcon('rule_id') }}
                     </th>
-                    <th
-                      @click="sortBy('uuid')"
-                      style="cursor: pointer; width: 6%"
-                    >
-                      UUID {{ getSortIcon('uuid') }}
-                    </th>
-                    <th
-                      @click="sortBy('has_dynblock')"
-                      style="cursor: pointer; width: 4%"
-                    >
+                    <th @click="sortBy('uuid')" style="cursor: pointer; width: 6%">UUID {{ getSortIcon('uuid') }}</th>
+                    <th @click="sortBy('has_dynblock')" style="cursor: pointer; width: 4%">
                       Synced {{ getSortIcon('has_dynblock') }}
                     </th>
-                    <th
-                      @click="sortBy('creation_order')"
-                      style="cursor: pointer; width: 3%"
-                    >
+                    <th @click="sortBy('creation_order')" style="cursor: pointer; width: 3%">
                       C.O {{ getSortIcon('creation_order') }}
                     </th>
-                    <th
-                      @click="sortBy('matches')"
-                      style="cursor: pointer; width: 3%"
-                    >
+                    <th @click="sortBy('matches')" style="cursor: pointer; width: 3%">
                       Match {{ getSortIcon('matches') }}
                     </th>
-                    <th
-                      @click="sortBy('rule')"
-                      style="cursor: pointer; width: 58%"
-                    >
-                      Rule {{ getSortIcon('rule') }}
-                    </th>
+                    <th @click="sortBy('rule')" style="cursor: pointer; width: 58%">Rule {{ getSortIcon('rule') }}</th>
 
                     <th style="width: 6%; text-align: center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    v-for="rule in paginatedRules"
-                    :key="rule.id"
-                    :class="{ 'rule-synced': rule.agent_online === 1 }"
-                  >
+                  <tr v-for="rule in paginatedRules" :key="rule.id" :class="{ 'rule-synced': rule.agent_online === 1 }">
                     <td style="padding: 0.33rem">{{ rule.id }}</td>
                     <td style="padding: 0.33rem">
-                      <div
-                        v-if="rule.agent_online === 1"
-                        class="tooltip-container"
-                      >
-                        <span
-                          v-if="rule.agent_online === 1"
-                          class="badge badge-synced"
-                          >{{ rule.agent_name }}</span
-                        >
+                      <div v-if="rule.agent_online === 1" class="tooltip-container">
+                        <span v-if="rule.agent_online === 1" class="badge badge-synced">{{ rule.agent_name }}</span>
                         <span class="tooltip-text">Online</span>
                       </div>
-                      <span v-if="rule.agent_online === 0"
-                        >{{ rule.agent_name }}</span
-                      >
+                      <span v-if="rule.agent_online === 0">{{ rule.agent_name }}</span>
                     </td>
 
                     <td style="padding: 0.33rem">{{ rule.name || '-' }}</td>
@@ -155,60 +90,36 @@
                       </div>
                     </td>
                     <td style="padding: 0.33rem">
-                      <span
-                        v-if="rule.has_synced === 1"
-                        class="badge badge-synced"
-                      >
-                        <a :href="'/dynblock-rules/' + rule.uuid">Link</a></span
-                      >
-                      <div
-                        v-if="rule.has_synced === 1"
-                        class="tooltip-container"
-                      >
+                      <span v-if="rule.has_synced === 1" class="badge badge-synced">
+                        <a :href="'/dynblock-rules/' + rule.uuid">Link</a>
+                      </span>
+                      <div v-if="rule.has_synced === 1" class="tooltip-container">
                         <span class="help-icon">?</span>
-                        <span class="tooltip-text"
-                          >Rule has synced from Console</span
-                        >
+                        <span class="tooltip-text">Rule has synced from Console</span>
                       </div>
 
-                      <div
-                        v-if="rule.has_synced === 0"
-                        class="tooltip-container"
-                      >
+                      <div v-if="rule.has_synced === 0" class="tooltip-container">
                         <span class="help-icon-dist">?</span>
-                        <span class="tooltip-text"
-                          >Rule has synced from dist</span
-                        >
+                        <span class="tooltip-text">Rule has synced from dist</span>
                       </div>
                     </td>
                     <td style="padding: 0.33rem">{{ rule.creation_order }}</td>
                     <td style="padding: 0.33rem">{{ rule.matches }}</td>
                     <td style="padding: 0.33rem">
-                      <code style="font-size: 0.85rem; word-break: break-word"
-                        >{{ rule.rule }}</code
-                      >
-                      ⏩<code style="font-size: 0.85rem; word-break: break-word"
-                        >{{ rule.action }}</code
-                      >
+                      <code style="font-size: 0.85rem; word-break: break-word">{{ rule.rule }}</code>
+                      ⏩
+                      <code style="font-size: 0.85rem; word-break: break-word">{{ rule.action }}</code>
 
                       <div class="tooltip-container">
                         <span class="help-icon-dist">?</span>
-                        <span class="tooltip-text"
-                          >Updated: {{ formatDate(rule.updated_at) }}</span
-                        >
+                        <span class="tooltip-text">Updated: {{ formatDate(rule.updated_at) }}</span>
                       </div>
                     </td>
 
                     <td style="padding: 0.33rem; text-align: center">
                       <div class="tooltip-container">
                         <div v-if="rule.agent_online === 0 ">
-                          <button
-                            class="btn-small"
-                            @click="deleteRule(rule)"
-                            aria-label="Delete rule"
-                          >
-                            Delete
-                          </button>
+                          <button class="btn-small" @click="deleteRule(rule)" aria-label="Delete rule">Delete</button>
                         </div>
                         <div class="tooltip-text">
                           <h5>Delete from Database, not from Agent!</h5>
@@ -226,44 +137,14 @@
             <div
               v-if="totalPages > 1"
               class="pagination-controls"
-              style="
-                margin-top: 1rem;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 0.5rem;
-              "
-            >
-              <button
-                class="btn btn-sm"
-                @click="currentPage = 1"
-                :disabled="currentPage === 1"
-              >
-                First
-              </button>
-              <button
-                class="btn btn-sm"
-                @click="currentPage--"
-                :disabled="currentPage === 1"
-              >
-                Previous
-              </button>
+              style="margin-top: 1rem; display: flex; justify-content: center; align-items: center; gap: 0.5rem">
+              <button class="btn btn-sm" @click="currentPage = 1" :disabled="currentPage === 1">First</button>
+              <button class="btn btn-sm" @click="currentPage--" :disabled="currentPage === 1">Previous</button>
               <span style="padding: 0 1rem">
-                Page {{ currentPage }} of {{ totalPages }} ({{
-                filteredRules.length }} rules)
+                Page {{ currentPage }} of {{ totalPages }} ({{ filteredRules.length }} rules)
               </span>
-              <button
-                class="btn btn-sm"
-                @click="currentPage++"
-                :disabled="currentPage === totalPages"
-              >
-                Next
-              </button>
-              <button
-                class="btn btn-sm"
-                @click="currentPage = totalPages"
-                :disabled="currentPage === totalPages"
-              >
+              <button class="btn btn-sm" @click="currentPage++" :disabled="currentPage === totalPages">Next</button>
+              <button class="btn btn-sm" @click="currentPage = totalPages" :disabled="currentPage === totalPages">
                 Last
               </button>
             </div>

@@ -184,14 +184,7 @@ a:active {
 
 .sync-progress-fill-success {
   height: 100%;
-  background: linear-gradient(
-    to right,
-    #4f46e5,
-    #7c3aed,
-    #ec4899,
-    #f59e0b,
-    #4f46e5
-  );
+  background: linear-gradient(to right, #4f46e5, #7c3aed, #ec4899, #f59e0b, #4f46e5);
   background-size: 200% 100%;
   animation: progress-shimmer 10s linear infinite;
   transition: width 0.1s linear;
@@ -201,14 +194,7 @@ a:active {
 
 .sync-progress-fill-failed {
   height: 100%;
-  background: linear-gradient(
-    to right,
-    #841212,
-    #0b0101,
-    #ec4899,
-    #f10303,
-    #010101
-  );
+  background: linear-gradient(to right, #841212, #0b0101, #ec4899, #f10303, #010101);
   background-size: 200% 100%;
   animation: progress-shimmer 2s linear infinite;
   transition: width 0.1s linear;
@@ -217,14 +203,7 @@ a:active {
 }
 .sync-progress-fill-never {
   height: 100%;
-  background: linear-gradient(
-    to right,
-    #a5a5a5,
-    #ffffff,
-    #1d1d1d,
-    #bcbcbc,
-    #ffffff
-  );
+  background: linear-gradient(to right, #a5a5a5, #ffffff, #1d1d1d, #bcbcbc, #ffffff);
   background-size: 200% 100%;
   animation: progress-shimmer 10s linear infinite;
   transition: width 0.1s linear;
@@ -1371,11 +1350,11 @@ input:checked + .slider:before {
 
 .topology-group-col {
   flex: 0 0 auto;
-  width: 350px;
+  width: 450px;
 }
 
 .topology-group-box {
-  border: 2px solid var(--accent-color);
+  border: 1px dashed var(--accent-color);
   border-radius: 10px;
   padding: 0.75rem;
   background-color: var(--card-bg);
@@ -1482,38 +1461,26 @@ input:checked + .slider:before {
 }
 
 .topo-badge-rules {
-  background: linear-gradient(
-    45deg,
-    #00582a 0%,
-    var(--card-header-bg) 50%,
-    var(--card-bg) 100%
-  );
+  background: linear-gradient(45deg, #00582a 0%, var(--card-header-bg) 80%, var(--card-bg) 100%);
   color: #ffffff;
   width: 100%;
   border-radius: 4px;
+  font-size: larger;
 }
 
 .topo-badge-servers {
-  background: linear-gradient(
-    45deg,
-    #00582a 0%,
-    var(--card-header-bg) 50%,
-    var(--card-bg) 100%
-  );
+  background: linear-gradient(45deg, #00582a 0%, var(--card-header-bg) 80%, var(--card-bg) 100%);
   color: #ffffff;
   width: 100%;
   border-radius: 4px;
+  font-size: larger;
 }
 .topo-badge-list {
-  background: linear-gradient(
-    45deg,
-    #00582a 0%,
-    var(--card-header-bg) 50%,
-    var(--card-bg) 100%
-  );
+  background: linear-gradient(45deg, #00582a 0%, var(--card-header-bg) 80%, var(--card-bg) 100%);
   color: #ffffff;
   width: 100%;
   border-radius: 4px;
+  font-size: larger;
 }
 
 .topo-rules-list {

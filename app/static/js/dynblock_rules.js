@@ -71,9 +71,7 @@ createApp({
       });
     },
     alNameSuggestions() {
-      const names = this.alEntries
-        .map((e) => e.name)
-        .filter((n) => n && n.trim() !== "");
+      const names = this.alEntries.map((e) => e.name).filter((n) => n && n.trim() !== "");
       return [...new Set(names)].sort();
     },
   },
@@ -136,12 +134,9 @@ createApp({
       this.isRefreshing = true;
       try {
         const pathParts = window.location.pathname.split("/").filter(Boolean);
-        const uuidPattern =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const url =
-          pathParts[0] === "dynblock-rules" &&
-          pathParts.length === 2 &&
-          uuidPattern.test(pathParts[1])
+          pathParts[0] === "dynblock-rules" && pathParts.length === 2 && uuidPattern.test(pathParts[1])
             ? `/api/dynblock-rules/${pathParts[1]}`
             : "/api/dynblock-rules";
         const response = await fetch(url);
@@ -192,9 +187,7 @@ createApp({
     async deleteDynBlockRule(rule) {
       // Sanitize the command for display in the confirmation dialog
       const displayCommand =
-        rule.rule_command.length > 80
-          ? rule.rule_command.substring(0, 80) + "..."
-          : rule.rule_command;
+        rule.rule_command.length > 80 ? rule.rule_command.substring(0, 80) + "..." : rule.rule_command;
 
       if (
         !confirm(
@@ -311,25 +304,17 @@ createApp({
 
         if (data.success) {
           // Update the rule in the list
-          const index = this.dynBlockRulesList.findIndex(
-            (r) => r.id === rule.id,
-          );
+          const index = this.dynBlockRulesList.findIndex((r) => r.id === rule.id);
           if (index !== -1) {
             this.dynBlockRulesList[index] = data.rule;
           }
           const status = data.rule.is_active ? "activated" : "deactivated";
-          this.showDynBlockRuleMessage(
-            `Rule ${status} successfully`,
-            "success",
-          );
+          this.showDynBlockRuleMessage(`Rule ${status} successfully`, "success");
         } else {
           this.showDynBlockRuleMessage("Error: " + data.error, "danger");
         }
       } catch (error) {
-        this.showDynBlockRuleMessage(
-          "Error toggling rule: " + error.message,
-          "danger",
-        );
+        this.showDynBlockRuleMessage("Error toggling rule: " + error.message, "danger");
       }
     },
     openEditModal(rule) {
@@ -356,28 +341,23 @@ createApp({
     },
     async saveEditedRule() {
       try {
-        const response = await fetch(
-          `/api/dynblock-rules/${this.editingRule.id}`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              name: this.editingRule.name,
-              rule_command: this.editingRule.rule_command,
-              description: this.editingRule.description,
-              group_id: this.editingRule.group_id,
-            }),
+        const response = await fetch(`/api/dynblock-rules/${this.editingRule.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            name: this.editingRule.name,
+            rule_command: this.editingRule.rule_command,
+            description: this.editingRule.description,
+            group_id: this.editingRule.group_id,
+          }),
+        });
         const data = await response.json();
 
         if (data.success) {
           // Update the rule in the list
-          const index = this.dynBlockRulesList.findIndex(
-            (r) => r.id === this.editingRule.id,
-          );
+          const index = this.dynBlockRulesList.findIndex((r) => r.id === this.editingRule.id);
           if (index !== -1) {
             this.dynBlockRulesList[index] = data.rule;
           }
@@ -404,14 +384,11 @@ createApp({
       if (input.length > 0) {
         // Filter templates based on the current input
         const inputLower = input.toLowerCase();
-        this.filteredTemplates = this.ruleCommandTemplates.filter(
-          (template) => {
-            return (
-              template.name.toLowerCase().includes(inputLower) ||
-              template.template.toLowerCase().includes(inputLower)
-            );
-          },
-        );
+        this.filteredTemplates = this.ruleCommandTemplates.filter((template) => {
+          return (
+            template.name.toLowerCase().includes(inputLower) || template.template.toLowerCase().includes(inputLower)
+          );
+        });
 
         if (this.filteredTemplates.length > 0) {
           this.showTemplateDropdown = true;
@@ -431,16 +408,10 @@ createApp({
       // Handle arrow key navigation
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        this.selectedTemplateIndex = Math.min(
-          this.selectedTemplateIndex + 1,
-          this.filteredTemplates.length - 1,
-        );
+        this.selectedTemplateIndex = Math.min(this.selectedTemplateIndex + 1, this.filteredTemplates.length - 1);
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        this.selectedTemplateIndex = Math.max(
-          this.selectedTemplateIndex - 1,
-          -1,
-        );
+        this.selectedTemplateIndex = Math.max(this.selectedTemplateIndex - 1, -1);
       } else if (event.key === "Enter" && this.selectedTemplateIndex >= 0) {
         event.preventDefault();
         this.selectTemplate(this.filteredTemplates[this.selectedTemplateIndex]);
@@ -455,18 +426,12 @@ createApp({
 
       // Replace r_name placeholder
       if (this.newDynBlockRule.name) {
-        filledTemplate = filledTemplate.replace(
-          /\{\{r_name\}\}/g,
-          this.newDynBlockRule.name,
-        );
+        filledTemplate = filledTemplate.replace(/\{\{r_name\}\}/g, this.newDynBlockRule.name);
       }
 
       // Replace r_uuid placeholder with generated UUID
       if (this.generatedUuid) {
-        filledTemplate = filledTemplate.replace(
-          /\{\{r_uuid\}\}/g,
-          this.generatedUuid,
-        );
+        filledTemplate = filledTemplate.replace(/\{\{r_uuid\}\}/g, this.generatedUuid);
       }
 
       // Replace r_access_list placeholder with selected access list name
@@ -498,24 +463,16 @@ createApp({
     },
     generateUuid() {
       // Generate UUID v4 using Web Crypto API if available, fallback to Math.random
-      if (
-        typeof crypto !== "undefined" &&
-        typeof crypto.randomUUID === "function"
-      ) {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
         this.generatedUuid = crypto.randomUUID();
       } else {
         // Fallback for older browsers (not cryptographically secure)
-        console.warn(
-          "crypto.randomUUID not available, using Math.random fallback (not cryptographically secure)",
-        );
-        this.generatedUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-          /[xy]/g,
-          function (c) {
-            const r = (Math.random() * 16) | 0;
-            const v = c === "x" ? r : (r & 0x3) | 0x8;
-            return v.toString(16);
-          },
-        );
+        console.warn("crypto.randomUUID not available, using Math.random fallback (not cryptographically secure)");
+        this.generatedUuid = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
       }
     },
     // openTemplateManagerModal() {
@@ -559,9 +516,7 @@ createApp({
     async saveTemplate() {
       try {
         const isEdit = !!this.editingTemplate.id;
-        const url = isEdit
-          ? `/api/rule-command-templates/${this.editingTemplate.id}`
-          : "/api/rule-command-templates";
+        const url = isEdit ? `/api/rule-command-templates/${this.editingTemplate.id}` : "/api/rule-command-templates";
         const method = isEdit ? "PATCH" : "POST";
 
         const response = await fetch(url, {
@@ -613,21 +568,14 @@ createApp({
       }
     },
     async deleteTemplate(template) {
-      if (
-        !confirm(
-          `Are you sure you want to delete the template "${template.name}"?`,
-        )
-      ) {
+      if (!confirm(`Are you sure you want to delete the template "${template.name}"?`)) {
         return;
       }
 
       try {
-        const response = await fetch(
-          `/api/rule-command-templates/${template.id}`,
-          {
-            method: "DELETE",
-          },
-        );
+        const response = await fetch(`/api/rule-command-templates/${template.id}`, {
+          method: "DELETE",
+        });
         const data = await response.json();
 
         if (data.success) {
@@ -665,10 +613,8 @@ createApp({
       try {
         const params = new URLSearchParams();
         if (this.alFilterType) params.append("type", this.alFilterType);
-        if (this.alFilterCategory)
-          params.append("category", this.alFilterCategory);
-        if (this.alFilterEnabled !== "")
-          params.append("enabled", this.alFilterEnabled);
+        if (this.alFilterCategory) params.append("category", this.alFilterCategory);
+        if (this.alFilterEnabled !== "") params.append("enabled", this.alFilterEnabled);
         const response = await fetch(`/api/access-list?${params.toString()}`);
         const data = await response.json();
         if (data.success) {
@@ -760,11 +706,7 @@ createApp({
       }
     },
     async alDeleteEntry(entry) {
-      if (
-        !confirm(
-          `Are you sure you want to delete entry "${entry.value}"? This cannot be undone.`,
-        )
-      ) {
+      if (!confirm(`Are you sure you want to delete entry "${entry.value}"? This cannot be undone.`)) {
         return;
       }
       try {

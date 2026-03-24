@@ -17,20 +17,21 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 ### API Server Architecture
 ```
 ┌─────────────────┐
-│ Web-Console     │ (console.py): Flask-based web interface for managing and monitoring API server agents
+│ Web-Console     │ (console.py): Flask-based web interface for
+|                 |               managing and monitoring API server agents
 └────────┬────────┘
          │ JSON Request
          │ {"command": "..."}
          ▼
 ┌─────────────────┐
-│ webapi-agent   │  (webapi-agent.py) (HTTP Server cli proxy)
+│ webapi-agent    │  (webapi-agent.py) HTTPs Server cli proxy
 │                 │
 └────────┬────────┘
          │
          │ CLI Console Connection
          ▼
 ┌─────────────────┐
-│   dnsdist       │
+│  dnsdist        │  (add dnsdist-conf/manager.lua for Access list logic)
 │  127.0.0.1:5199 │
 └────────┬────────┘
          │ Execute Command
@@ -52,9 +53,21 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 
 
 ![alt text][logo3]
-## Quick Start
+# Quick Start
 
-### Using dnsdist and cli
+#### Using dnsdist and cli
+
+##### Before we begin - manager.lua
+
+To manage lists and synchronize them with the console
+Added the ListManager class and manager object.
+
+For now this is a workaround and may be changed in the future.
+To synchronize, we need to retrieve current IP domain lists and compare them with the database.
+Without this, the functionality of Access-lists won't work.
+
+But everything else will work. If you don't need this functionality, you don't have to add the lua script.
+
 
 ##### read this https://www.dnsdist.org/guides/console.html
 
@@ -140,6 +153,7 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 wsgi:app
 
 to start background syncer process:
 ```
+export DNSDIST_SYNCER_TOKEN='' (if env:AUTH_ENABLED true)
 ./syncer.sh
 ```
 

@@ -20,9 +20,7 @@ createApp({
     async loadAuditLogs(page = 1) {
       this.loading = true;
       try {
-        const response = await fetch(
-          `/api/audit?page=${page}&per_page=${this.pagination.per_page}`,
-        );
+        const response = await fetch(`/api/audit?page=${page}&per_page=${this.pagination.per_page}`);
         const data = await response.json();
 
         if (data.success) {
@@ -44,11 +42,7 @@ createApp({
     },
     async clearOldLogs() {
       // Show confirmation dialog
-      if (
-        !confirm(
-          "Are you sure you want to delete all audit logs older than 3 days? This action cannot be undone.",
-        )
-      ) {
+      if (!confirm("Are you sure you want to delete all audit logs older than 3 days? This action cannot be undone.")) {
         return;
       }
 

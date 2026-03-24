@@ -99,11 +99,7 @@ createApp({
       }
     },
     async deleteUser(user) {
-      if (
-        !confirm(
-          `Are you sure you want to delete user "${user.username}"? This cannot be undone.`,
-        )
-      ) {
+      if (!confirm(`Are you sure you want to delete user "${user.username}"? This cannot be undone.`)) {
         return;
       }
       try {
@@ -147,11 +143,7 @@ createApp({
       }
     },
     async revokeToken(user) {
-      if (
-        !confirm(
-          `Revoke API token for "${user.username}"? This cannot be undone.`,
-        )
-      ) {
+      if (!confirm(`Revoke API token for "${user.username}"? This cannot be undone.`)) {
         return;
       }
       try {
@@ -178,11 +170,7 @@ createApp({
     },
     maskToken(token) {
       if (!token) return "";
-      return (
-        token.substring(0, 8) +
-        "•".repeat(token.length - 12) +
-        token.substring(token.length - 4)
-      );
+      return token.substring(0, 8) + "•".repeat(token.length - 12) + token.substring(token.length - 4);
     },
     async copyToken(token) {
       try {

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import parsers
 import requests
 import sqlalchemy as sa
+import urllib3
 from flask import (Flask, jsonify, redirect, render_template, request,
                    send_from_directory, session, url_for)
 from models import (AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
@@ -29,25 +30,14 @@ settings.configure_logging()
 logger = logging.getLogger('web-console-manager')
 db = None
 victoria_metrics_exporter = None
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def create_app():
     """
     Flask application factory
-
-    This function creates and configures the Flask application instance.
-    It initializes the database and Victoria Metrics integration.
-
-    In a multi-worker environment (e.g., Gunicorn), each worker process
-    will call this function once, creating its own database connection
-    and app instance. This is the correct behavior for WSGI applications.
-
-    Returns:
-        Flask: Configured Flask application instance
-
-    Raises:
-        Exception: If database or Victoria Metrics initialization fails
     """
+
     global db, victoria_metrics_exporter
 
     flask_app = Flask(__name__)
@@ -118,14 +108,33 @@ def _authenticate_bearer_token():
         db_session.close()
 
 
-# to-do
-def command_to_send(agent, command):
-    result_code = ''
+class ErrorResponse:
+    """Stub class for error response"""
+
+    def __init__(self, status_code, error_message):
+        self.status_code = status_code
+        self.ok = False
+        self._error_message = error_message
+
+    def json(self):
+        return {
+            'success': False,
+            'error': self._error_message,
+            'status_code': self.status_code
+        }
+
+    @property
+    def text(self):
+        return f'{{"error": "{self._error_message}"}}'
+
+
+def command_to_send(agent, command, logger_fun_name=''):
+
     try:
         agent_url = agent.get_url()
         agent_token = agent.agent_token
 
-        logger.debug(f"fun: command_to_send: URL {agent_url}")
+        logger.debug(f"fun:command_to_send:{logger_fun_name} URL {agent_url}")
         response = requests.post(
             f'{agent_url}/api/v1/command',
             json={'command': command},
@@ -133,19 +142,24 @@ def command_to_send(agent, command):
                 'Content-Type': 'application/json',
                 'X-Agent-Token': agent_token
             },
-            timeout=10,
-            verify=False  # Отключает проверку SSL сертификата
+            timeout=settings.TIMEOUT_AGENT,
+            verify=False
         )
-        result_code = response.status_code
-        if result_code == 200:
-            logger.debug(f"fun: command_to_send: {result_code}")
-            return response
-        else:
-            logger.debug(f"fun: command_to_send: Error in HTTP {result_code}")
-            return response
-    except Exception as e:
-        logger.error(f"fun: command_to_send: {str(e)}")
+
+        logger.debug(f"fun:command_to_send:{logger_fun_name}: {response.status_code}")
         return response
+
+    except requests.exceptions.Timeout:
+        logger.error(f"fun:command_to_send:{logger_fun_name} Timeout")
+        return ErrorResponse(408, f"Timeout after {settings.TIMEOUT_AGENT}s")
+
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"fun:command_to_send:{logger_fun_name} Connection error")
+        return ErrorResponse(503, f"Connection error: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"fun:command_to_send:{logger_fun_name} {str(e)}")
+        return ErrorResponse(500, str(e))
 
 
 def _get_current_user_id():
@@ -248,7 +262,6 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
 
         for name, values in parsed_data.items():
             category = determine_category(name)
-
             if values:
                 values_str = ', '.join(values)
             else:
@@ -256,7 +269,6 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
             logger.debug(f"fun: sync_accesslist_to_database: start work {name}")
             if name in existing_records:
                 record = existing_records[name]
-
                 if record.value != values_str or record.category != category:
                     logger.debug(f"fun: sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
                     record.value = values_str
@@ -288,7 +300,6 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
             deleted_count += 1
 
         session.commit()
-
         logger.debug(f"fun: sync_accesslist_to_database: stats: {agent_name}")
         logger.debug(f"fun: sync_accesslist_to_database: added: {added_count}")
         logger.debug(f"fun: sync_accesslist_to_database: updated: {updated_count}")
@@ -326,7 +337,6 @@ def normalize_parsed_data(parsed_data):
         - Preserves the original list names
     """
     normalized = {}
-
     for list_name, values in parsed_data.items():
         if not values:
             normalized[list_name] = []
@@ -344,7 +354,6 @@ def normalize_parsed_data(parsed_data):
 def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
     logger.debug(f"fun: sync_accesslist_to_agents: start sync {agent.agent_name}")
-
     parsed_data = normalize_parsed_data(raw_parsed_data)
     logger.debug(f"fun: sync_accesslist_to_agents: data from agent {agent.agent_name}")
     for list_name, values in parsed_data.items():
@@ -361,10 +370,8 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
     for item in access_items:
         list_name = item.name
-
         if list_name not in truth_lists:
             truth_lists[list_name] = set()
-
         values = split_and_normalize(item.value)
         for val in values:
             truth_lists[list_name].add(val)
@@ -375,7 +382,6 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
     commands_sent = 0
     # parsed_data.keys() =  dict_keys(['domain_spam', 'ip_ip_list', 'tttttt'])
     if parsed_data:
-
         for agent_list_name in parsed_data.keys():
             logger.debug(f"fun: sync_accesslist_to_agents: {agent_list_name} ")
             found_in_truth = False
@@ -384,7 +390,6 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
                 found_in_truth = True
             else:
                 logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
-
             if not found_in_truth:
                 logger.debug(f"fun: sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
                 command = f'manager:remove_list("{agent_list_name}")'
@@ -401,13 +406,10 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
     for truth_name, truth_values in truth_lists.items():
         logger.debug(f"fun: sync_accesslist_to_agents: Processing a list from AccessList {truth_name}")
-
         target_list_name = truth_name
         try:
-
             # dict_keys(['domain_whitelist', 'domain_spam', 'ip_ip_list', 'tttttt'])
             parsed_values_for_list = {}
-
             logger.debug(f"fun: sync_accesslist_to_agents:Agent data {agent.agent_name}")
             for list_name, values in parsed_data.items():
                 logger.debug(f"fun: sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
@@ -416,14 +418,11 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
             logger.debug(f"fun: sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
             parsed_values_for_list = set(parsed_values_for_list)
-
             logger.debug(f"fun: sync_accesslist_to_agents:Target list on agent {target_list_name}")
             logger.debug(f"fun: sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
             logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values}")
-
             to_add = truth_values - parsed_values_for_list
             logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
-
             for item in to_add:
                 logger.debug(f"fun: sync_accesslist_to_agents:Add: {item}")
                 command = f'manager:add("{target_list_name}", "{item}")'
@@ -439,12 +438,10 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
                     commands_sent += 1
         except Exception as e:
             logger.warning(f' {str(e)}')
-
     if commands_sent == 0:
         logger.debug(f"fun: sync_accesslist_to_agents:Data is synchronized, no commands required.{agent.agent_name}")
     else:
         logger.info(f"fun: sync_accesslist_to_agents:SYNCHRONIZATION COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
-
     return {
         'success': True,
         'commands_sent': commands_sent,
@@ -453,7 +450,6 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
 
 def sync_rules_to_database(agent_name, parsed_rules, session):
-
     """
     Operating logic:
     1. UUID is the main field for identifying errors.
@@ -463,11 +459,9 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
     5. The order of the data entry rules is not important.
     """
     logger.debug(f"fun:sync_rules_to_database:=== STARTING SYNC for agent {agent_name} ===")
-
     # Get the existing agent rules
     existing_rules = session.query(Rule).filter_by(agent_name=agent_name).all()
     logger.debug(f"fun:sync_rules_to_database:Found {len(existing_rules)} existing rules in DB")
-
     # Create a lookup dictionary by UUID (primary identifier)
     existing_rules_by_uuid = {rule.uuid: rule for rule in existing_rules if rule.uuid}
     logger.debug(f"fun:sync_rules_to_database:UUID lookup map: {len(existing_rules_by_uuid)} entries")
@@ -488,13 +482,11 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
             stats['deleted'] += 1
     else:
         logger.debug(f"fun:sync_rules_to_database:Processing {len(parsed_rules)} rules from input")
-
         # A set of UUIDs from the input data to determine the rules to be removed
         input_uuids = set()
         # We process each rule from the input data
         for rule_data in parsed_rules:
             rule_uuid = rule_data.get('uuid')
-
             # Skip rules without UUIDs (shouldn't occur, but just in case)
             if not rule_uuid:
                 logger.debug(f"fun:sync_rules_to_database:Rule without UUID, skipping: {rule_data}")
@@ -511,10 +503,8 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
                 uuid=rule_uuid,
                 creation_order=rule_data.get('creation_order')
             )
-
             # Checking if a rule exists in the database by UUID
             existing_rule = existing_rules_by_uuid.get(rule_uuid)
-
             if existing_rule:
                 if _update_rule_if_changed(existing_rule, new_rule):
                     stats['updated'] += 1
@@ -540,7 +530,13 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
         logger.error(f"fun:sync_rules_to_database:Error during commit: {e}")
         session.rollback()
         raise
-    _log_sync_results(agent_name, stats)
+
+    logger.debug(f"fun:sync_rules_to_database:=== SYNC RESULTS for agent {agent_name} ===")
+    logger.debug(f"fun:sync_rules_to_database:Added: {stats['added']}")
+    logger.debug(f"fun:sync_rules_to_database:Updated: {stats['updated']}")
+    logger.debug(f"fun:sync_rules_to_database:Unchanged: {stats['unchanged']}")
+    logger.debug(f"fun:sync_rules_to_database:Deleted: {stats['deleted']}")
+    logger.debug(f"fun:sync_rules_to_database:=== END SYNC {agent_name} ===")
     return stats
 
 
@@ -559,15 +555,6 @@ def _update_rule_if_changed(existing_rule, new_rule):
             setattr(existing_rule, field, new_value)
             changed = True
     return changed
-
-
-def _log_sync_results(agent_name, stats):
-    logger.debug(f"fun:_log_sync_results:=== SYNC RESULTS for agent {agent_name} ===")
-    logger.debug(f"fun:_log_sync_results:Added: {stats['added']}")
-    logger.debug(f"fun:_log_sync_results:Updated: {stats['updated']}")
-    logger.debug(f"fun:_log_sync_results:Unchanged: {stats['unchanged']}")
-    logger.debug(f"fun:_log_sync_results:Deleted: {stats['deleted']}")
-    logger.debug(f"fun:_log_sync_results:=== END SYNC {agent_name} ===")
 
 
 def sync_agent_status_to_database(agent_name, status, session):
@@ -600,12 +587,10 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
     """
     if not parsed_servers or not isinstance(parsed_servers, list):
         return
-
     # Fetch existing servers for this agent indexed by server_id
     existing_servers = {}
     for server in session.query(DownstreamServer).filter_by(agent_name=agent_name).all():
         existing_servers[server.server_id] = server
-
     # Track which server_ids we've seen in the new data
     seen_server_ids = set()
 
@@ -620,9 +605,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
         if server_id is None:
             logger.debug(f'fun:sync_servers_to_database:Server data missing id field, skipping: {server_data}')
             continue
-
         seen_server_ids.add(server_id)
-
         # Create a new server instance from the parsed data
         new_server = DownstreamServer(
             agent_name=agent_name,
@@ -685,11 +668,9 @@ def sync_dynblocks_to_database(agent_name, parsed_blocks, session):
     """
     if parsed_blocks is None:
         return
-
     # Handle empty list (no blocks)
     if not isinstance(parsed_blocks, list):
         return
-
     # Delete existing blocks for this agent
     session.query(AgentDynBlock).filter_by(agent_name=agent_name).delete()
 
@@ -720,7 +701,6 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
 
     new_clients = [client_data.get('client') for client_data in parsed_clients]
     logger.debug(f'fun:sync_topclients_to_database: {new_clients}')
-
     session.query(TopClient).filter(
         TopClient.agent_name == agent_name,
         ~TopClient.client.in_(new_clients)
@@ -728,19 +708,15 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
 
     for client_data in parsed_clients:
         client_name = client_data.get('client')
-
         existing = session.query(TopClient).filter_by(
             agent_name=agent_name,
             client=client_name
         ).first()
-
         if existing:
-
             existing.rank = client_data.get('rank')
             existing.queries = client_data.get('queries', 0)
             existing.percentage = client_data.get('percentage', '0.0%')
         else:
-
             client = TopClient(
                 agent_name=agent_name,
                 rank=client_data.get('rank'),
@@ -749,7 +725,6 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
                 percentage=client_data.get('percentage', '0.0%')
             )
             session.add(client)
-
     session.commit()
     logger.debug(f'fun:sync_topclients_to_database:Synced {len(parsed_clients)} top clients for agent {agent_name}')
 
@@ -761,17 +736,13 @@ def sync_topqueries_to_database(agent_name, parsed_queries, session):
         TopQuery.agent_name == agent_name,
         ~TopQuery.query.in_(new_queries)
     ).delete(synchronize_session=False)
-
     for query_data in parsed_queries:
         query_name = query_data.get('query')
-
         existing = session.query(TopQuery).filter_by(
             agent_name=agent_name,
             query=query_name
         ).first()
-
         if existing:
-
             existing.rank = query_data.get('rank')
             existing.count = query_data.get('count', 0)
             existing.percentage = query_data.get('percentage', '0.0%')
@@ -810,7 +781,6 @@ def sync_dynblock_rules_to_agents(session):
             for agent in agents:
                 if agent.group_id == rule.group_id or rule.group_id is None:
                     logger.debug(f'fun:sync_dynblock_rules_to_agents:right agents group for  DynBlock {agent.agent_name}')
-                    agent_url = agent.get_url()
 
                     rule_exists = False
                     list_uuid_all = []
@@ -826,18 +796,8 @@ def sync_dynblock_rules_to_agents(session):
                         if not rule.is_active:
                             logger.debug(f'fun:sync_dynblock_rules_to_agents:Rule: {uuid} - disabled and found on agent {agent.agent_name}, need to be deleted')
                             rm_rule_cmd = f'rmRule("{uuid}")'
-
-                            # to-do
                             try:
-                                response = requests.post(
-                                    f'{agent_url}/api/v1/command',
-                                    json={'command': rm_rule_cmd},
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'X-Agent-Token': agent.agent_token
-                                    },
-                                    timeout=settings.TIMEOUT_AGENT
-                                )
+                                response = command_to_send(agent, rm_rule_cmd, sync_dynblock_rules_to_agents.__name__)
                                 error_msg = None
 
                                 if response.status_code == 200:
@@ -859,27 +819,24 @@ def sync_dynblock_rules_to_agents(session):
                     else:
                         # Execute the DynBlock rule command
                         if rule.is_active:
-                            logger.debug(f'fun:sync_dynblock_rules_to_agents:NO Rule {uuid} found on agent {agent.agent_name}, try to sync')
+
                             try:
-                                response = requests.post(
-                                    f'{agent_url}/api/v1/command',
-                                    json={'command': rule.rule_command},
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'X-Agent-Token': agent.agent_token
-                                    },
-                                    timeout=settings.TIMEOUT_AGENT
-                                )
-                                # sync_success = False
+                                response = command_to_send(agent, rule.rule_command, sync_dynblock_rules_to_agents.__name__)
+                                logger.debug(f'fun:sync_dynblock_rules_to_agents:NO Rule {uuid} found on agent {agent.agent_name}, try to sync {rule.rule_command}')
                                 error_msg = None
+                                response_data = response.json()
+
                                 if response.status_code == 200:
-                                    response_data = response.json()
-                                    if response_data.get('success'):
-                                        # sync_success = True
+
+                                    result_from_command = response_data.get('result', '')
+                                    if result_from_command.strip().startswith('Error'):
+                                        logger.error(f'fun:sync_dynblock_rules_to_agents:Error to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {result_from_command}')
+                                    elif response_data.get('success'):
+
                                         logger.debug(f'fun:sync_dynblock_rules_to_agents:Successfully synced DynBlock rule {rule.id} to agent {agent.agent_name}')
                                     else:
                                         error_msg = response_data.get('error', 'Unknown error')
-                                        logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
+                                        logger.error(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
                                 else:
                                     error_msg = f'HTTP {response.status_code}'
                                     logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
@@ -948,9 +905,9 @@ async def sync_data():
                 'version': agent.version,
                 'service_time': agent.service_time
             }
-            #  Try to get agent status
+
             try:
-                response = requests.get(f'{agent_url}/health', timeout=settings.TIMEOUT_AGENT)
+                response = requests.get(f'{agent_url}/health', timeout=settings.TIMEOUT_AGENT, verify=False)
                 if response.status_code == 200:
                     data = response.json()
                     agent_info['status'] = 'online'
@@ -967,7 +924,6 @@ async def sync_data():
                     skip_other_commands = True
                     info_tmp = agent_info['status']
                     error_messages.append(f'{agent.agent_name} status: {info_tmp}')
-
             except requests.exceptions.RequestException as e:
                 agent_info['status'] = 'offline'
                 agent_info['version'] = 'Unknown'
@@ -976,19 +932,13 @@ async def sync_data():
                 # skip all sync if status is no online
                 skip_other_commands = True
                 error_messages.append(f'{agent.agent_name} status: {str(e)}')
+
             time.sleep(0.1)
             if not skip_other_commands:
                 # sync_accesslist_to_database
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'manager:show_all()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'manager:show_all()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1022,18 +972,10 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showRules() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showRules({showUUIDs=true})'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'showRules({showUUIDs=true})'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
-
                         if response_data.get('success'):
                             result_text = response_data.get('result', '')
                             parsed_rules = parsers.parse_showrules_output(result_text)
@@ -1042,7 +984,6 @@ async def sync_data():
                             agent_status = 'online'  # Agent responded successfully
                     else:
                         agent_status = 'error'  # Non-200 response
-
                 except requests.exceptions.RequestException as e:
                     agent_status = 'offline'  # Connection error
                     error_msg = f'{agent.agent_name} rules: {str(e)}'
@@ -1058,15 +999,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showServers() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showServers()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'showServers()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1091,16 +1025,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showDynBlocks() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showDynBlocks()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
-
+                    command = 'showDynBlocks()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1122,15 +1048,9 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute topClients() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'topClients()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'topClients()'
+                    response = command_to_send(agent, command, sync_data.__name__)
+
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1156,15 +1076,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute topResponses(10, 3) command NXDOMAIN
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'topResponses(10)'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'topResponses(10)'
+                    response = command_to_send(agent, command, sync_data.__name__)
 
                     if response.status_code == 200:
                         response_data = response.json()
@@ -1251,7 +1164,6 @@ async def sync_data():
                 # Get all topclients and topqueries from database
                 all_topclients = session.query(TopClient).all()
                 all_topqueries = session.query(TopQuery).all()
-
                 # Export to Victoria Metrics
                 victoria_metrics_exporter.export_metrics(
                     topclients=all_topclients,
@@ -1444,7 +1356,6 @@ def oidc_callback():
 
         try:
             oidc_cfg = _get_oidc_config()
-
             # Exchange code for tokens
             token_resp = requests.post(
                 oidc_cfg['token_endpoint'],
@@ -1506,12 +1417,10 @@ def oidc_callback():
             or userinfo.get('email')
             or userinfo.get('sub', 'oidc-user')
         )
-
         session.clear()
         session['user_id'] = userinfo.get('sub', oidc_username)
         session['username'] = oidc_username
         session['auth_method'] = 'oidc'
-
         log_audit('LOGIN_OIDC', f'OIDC user "{oidc_username}" logged in')
         next_url = session.pop('oidc_next', url_for('dashboard'))
         return redirect(next_url)
@@ -1522,7 +1431,6 @@ def logout():
     if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
         return render_template('errors/404.html'), 404
     else:
-
         """Log the current user out and redirect to login page"""
         username = session.get('username', 'unknown')
         auth_method = session.get('auth_method', 'local')
@@ -1726,9 +1634,7 @@ def delete_rule(rule_id):
         rule_name = rule.name or f"Rule {rule_id}"
         session.delete(rule)
         session.commit()
-
         logger.debug(f'fun:delete_rule:Deleted rule: {rule_id}')
-
         log_audit(
             action='Delete Rule',
             details=f"Deleted rule '{rule_name}'"
@@ -1758,11 +1664,8 @@ def get_all_rules_id(rule_uuid: str):
     """
     session = db.get_session()
     try:
-
         result = []
-
         dynblock_uuids = set(dbr.rule_uuid for dbr in session.query(DynBlockRule.rule_uuid).distinct())
-
         rules = session.query(Rule).filter(Rule.uuid == rule_uuid).all()
         online_agent_names = set(
             agent.agent_name for agent in session.query(Agent)
@@ -2347,15 +2250,8 @@ def execute_command():
         agent_url = agent.get_url()
         # Send command to agent
         try:
-            response = requests.post(
-                f'{agent_url}/api/v1/command',
-                json={'command': command},
-                headers={
-                    'Content-Type': 'application/json',
-                    'X-Agent-Token': agent.agent_token
-                },
-                timeout=settings.TIMEOUT_AGENT
-            )
+            response = command_to_send(agent, command, execute_command.__name__)
+
             response_data = response.json()
             logger.debug(f"fun:execute_command:response_data {response_data}")
             # Check if this is a showRules() command and parse the output
@@ -2386,6 +2282,7 @@ def execute_command():
                 logger.debug(f"fun:execute_command:Error detected {response_data}")
                 response_data['parsed_rules'] = "Error detected"
                 response_data['success'] = False
+                response_data['error'] = "Error detected"
 
             if result and not isinstance(result, str):
                 result = json.dumps(result)
@@ -2462,6 +2359,7 @@ def execute_broadcast_command():
 
         # Send command to all agents
         for agent in agents:
+
             agent_url = agent.get_url()
             result = {
                 'agent_id': agent.id,
@@ -2472,16 +2370,10 @@ def execute_broadcast_command():
                 'error': None
             }
             try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': command},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
+                response = command_to_send(agent, command, execute_broadcast_command.__name__)
                 response_data = response.json()
+                logger.debug(f"fun:execute_broadcast_command:return {response_data}")
+
                 result['success'] = response_data.get('success', False)
                 result['result'] = response_data.get('result')
                 result['error'] = response_data.get('error')
@@ -2509,7 +2401,6 @@ def execute_broadcast_command():
                 if re.search(r'^Error:', result_pars):
                     logger.debug(f"fun:execute_broadcast_command:Error detected brodcast {result_data}")
                     result['success'] = False
-
                 if result_data and not isinstance(result_data, str):
                     result_data = json.dumps(result_data)
                 elif isinstance(result_data, str):
@@ -2524,9 +2415,10 @@ def execute_broadcast_command():
                 )
                 session.add(history)
 
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 logger.error(f'fun:execute_broadcast_command:Error sending command to agent {agent_url}: {str(e)}')
                 result['error'] = f'Failed to connect to agent: {str(e)}'
+                result['result'] = f'Failed to connect to agent: {str(e)}'
 
                 # Save failed attempt to history
                 history = CommandHistory(

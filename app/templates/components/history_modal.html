@@ -1,9 +1,5 @@
 <!-- History Modal -->
-<div
-  v-if="modals.history"
-  class="modal-backdrop"
-  @click.self="closeHistoryModal"
->
+<div v-if="modals.history" class="modal-backdrop" @click.self="closeHistoryModal">
   <div class="modal">
     <div class="modal-header">
       <h5 class="modal-title">📋 Command History</h5>
@@ -15,43 +11,28 @@
           type="text"
           class="form-control"
           v-model="historySearch"
-          placeholder="Search history (command, agent, or error)..."
-        />
+          placeholder="Search history (command, agent, or error)..." />
       </div>
-      <div v-if="history.length === 0" class="text-muted text-center">
-        No commands executed yet
-      </div>
-      <div
-        v-else-if="filteredHistory.length === 0"
-        class="text-muted text-center"
-      >
-        No matching history items found
-      </div>
+      <div v-if="history.length === 0" class="text-muted text-center">No commands executed yet</div>
+      <div v-else-if="filteredHistory.length === 0" class="text-muted text-center">No matching history items found</div>
       <div v-else>
         <div class="history-container">
           <div
             v-for="item in filteredHistory"
             :key="item.id"
-            :class="['history-item', item.success ? 'success' : 'failure']"
-          >
+            :class="['history-item', item.success ? 'success' : 'failure']">
             <div class="d-flex justify-between align-center">
               <div class="flex-grow">
                 <div class="history-command">
                   <span class="history-command-text">{{ item.command }}</span>
-                  <button
-                    class="copy-btn"
-                    @click="copyCommand(item.command, $event)"
-                    aria-label="Copy command"
-                  >
+                  <button class="copy-btn" @click="copyCommand(item.command, $event)" aria-label="Copy command">
                     📋 Copy
                   </button>
                 </div>
                 <div class="history-meta">
                   <span class="history-agent">{{ item.agent_name }}</span>
                   <span>•</span>
-                  <span
-                    :class="['history-status', item.success ? 'success' : 'failure']"
-                  >
+                  <span :class="['history-status', item.success ? 'success' : 'failure']">
                     {{ item.success ? '✓ Success' : '✗ Failed' }}
                   </span>
                 </div>
@@ -59,31 +40,18 @@
                   <small>Error: {{ item.error }}</small>
                 </div>
               </div>
-              <div class="history-timestamp">
-                {{ formatTimestamp(item.executed_at) }}
-              </div>
+              <div class="history-timestamp">{{ formatTimestamp(item.executed_at) }}</div>
             </div>
           </div>
         </div>
         <div class="pagination">
-          <button
-            @click="previousPage"
-            :disabled="!hasPreviousPage"
-            aria-label="Go to previous page"
-          >
+          <button @click="previousPage" :disabled="!hasPreviousPage" aria-label="Go to previous page">
             ← Previous
           </button>
-          <span class="page-info"
-            >Page {{ historyPagination.currentPage }} of {{ totalPages }} ({{
-            historyPagination.total }} total)</span
-          >
-          <button
-            @click="nextPage"
-            :disabled="!hasNextPage"
-            aria-label="Go to next page"
-          >
-            Next →
-          </button>
+          <span class="page-info">
+            Page {{ historyPagination.currentPage }} of {{ totalPages }} ({{ historyPagination.total }} total)
+          </span>
+          <button @click="nextPage" :disabled="!hasNextPage" aria-label="Go to next page">Next →</button>
         </div>
       </div>
     </div>
@@ -92,8 +60,7 @@
         class="btn btn-danger"
         @click="clearHistory"
         v-if="historyPagination.total > 0"
-        aria-label="Clear all command history"
-      >
+        aria-label="Clear all command history">
         Clear All History
       </button>
       <button class="btn" @click="closeHistoryModal">Close</button>

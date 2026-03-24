@@ -7,9 +7,7 @@
   <body>
     <!-- Navbar -->
     <div id="app2">
-      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
-        {% include 'components/navbar.html' %}
-      </nav>
+      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
     <div></div>
     <div id="app">
@@ -21,12 +19,8 @@
               <h6>{{ editingUser ? 'Edit User' : 'Add New User' }}</h6>
             </div>
             <div class="card-body">
-              <div v-if="formError" class="alert alert-danger mb-3">
-                {{ formError }}
-              </div>
-              <div v-if="formSuccess" class="alert alert-success mb-3">
-                {{ formSuccess }}
-              </div>
+              <div v-if="formError" class="alert alert-danger mb-3">{{ formError }}</div>
+              <div v-if="formSuccess" class="alert alert-success mb-3">{{ formSuccess }}</div>
               <form @submit.prevent="submitForm">
                 <table>
                   <tbody>
@@ -37,37 +31,25 @@
                       <td>
                         <label class="form-label">
                           Password
-                          <span
-                            v-if="editingUser"
-                            class="text-muted"
-                            style="font-size: 0.85em"
-                          >
-                            (leave blank to keep current)</span
-                          >
+                          <span v-if="editingUser" class="text-muted" style="font-size: 0.85em">
+                            (leave blank to keep current)
+                          </span>
                         </label>
                       </td>
                       <td>
                         <label class="form-label">
                           Status
-                          <span
-                            v-if="editingUser"
-                            class="text-muted"
-                            style="font-size: 0.85em"
-                          >
-                            (leave blank to keep current)</span
-                          >
+                          <span v-if="editingUser" class="text-muted" style="font-size: 0.85em">
+                            (leave blank to keep current)
+                          </span>
                         </label>
                       </td>
                       <td>
                         <label class="form-label">
                           Action
-                          <span
-                            v-if="editingUser"
-                            class="text-muted"
-                            style="font-size: 0.85em"
-                          >
-                            (leave blank to keep current)</span
-                          >
+                          <span v-if="editingUser" class="text-muted" style="font-size: 0.85em">
+                            (leave blank to keep current)
+                          </span>
                         </label>
                       </td>
                     </tr>
@@ -79,8 +61,7 @@
                             type="text"
                             v-model="form.username"
                             placeholder="Enter username"
-                            required
-                          />
+                            required />
                         </div>
                       </td>
                       <td>
@@ -90,18 +71,13 @@
                             type="password"
                             v-model="form.password"
                             placeholder="Enter password"
-                            :required="!editingUser"
-                          />
+                            :required="!editingUser" />
                         </div>
                       </td>
                       <td>
                         <div class="mb-3">
                           <label class="form-label">
-                            <input
-                              type="checkbox"
-                              v-model="form.is_active"
-                              style="margin-right: 0.4rem"
-                            />
+                            <input type="checkbox" v-model="form.is_active" style="margin-right: 0.4rem" />
                             Active
                           </label>
                         </div>
@@ -109,17 +85,9 @@
                       <td>
                         <div class="mb-3">
                           <button type="submit" class="btn" :disabled="saving">
-                            {{ saving ? 'Saving...' : (editingUser ? 'Update
-                            User' : 'Add User') }}
+                            {{ saving ? 'Saving...' : (editingUser ? 'Update User' : 'Add User') }}
                           </button>
-                          <button
-                            v-if="editingUser"
-                            type="button"
-                            class="btn"
-                            @click="cancelEdit"
-                          >
-                            Cancel
-                          </button>
+                          <button v-if="editingUser" type="button" class="btn" @click="cancelEdit">Cancel</button>
                         </div>
                       </td>
                     </tr>
@@ -159,60 +127,32 @@
                     <td>{{ user.id }}</td>
                     <td>
                       {{ user.username }}
-                      <span
-                        v-if="user.username === currentUser"
-                        class="text-muted"
-                        style="font-size: 0.8em"
-                      >
-                        (you)</span
-                      >
-                      <span
-                        v-if="user.username === 'syncer'"
-                        class="text-muted"
-                        style="font-size: 0.8em"
-                        >(system user)</span
-                      >
+                      <span v-if="user.username === currentUser" class="text-muted" style="font-size: 0.8em">
+                        (you)
+                      </span>
+                      <span v-if="user.username === 'syncer'" class="text-muted" style="font-size: 0.8em">
+                        (system user)
+                      </span>
                     </td>
                     <td>
-                      <span
-                        :style="{ color: user.is_active ? '#4caf50' : '#f44336' }"
-                      >
+                      <span :style="{ color: user.is_active ? '#4caf50' : '#f44336' }">
                         {{ user.is_active ? 'Yes' : 'No' }}
                       </span>
                     </td>
                     <td>
-                      <div
-                        style="
-                          display: flex;
-                          align-items: center;
-                          gap: 0.4rem;
-                          flex-wrap: wrap;
-                        "
-                      >
+                      <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap">
                         <span
                           v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')"
-                          style="
-                            font-family: monospace;
-                            font-size: 0.8em;
-                            word-break: break-all;
-                          "
-                        >
-                          {{ tokenVisible[user.id] ? user.api_token :
-                          maskToken(user.api_token) }}
+                          style="font-family: monospace; font-size: 0.8em; word-break: break-all">
+                          {{ tokenVisible[user.id] ? user.api_token : maskToken(user.api_token) }}
                         </span>
-                        <span
-                          v-else
-                          class="text-muted"
-                          style="font-size: 0.85em"
-                          >No token</span
-                        >
+                        <span v-else class="text-muted" style="font-size: 0.85em">No token</span>
                         <button
                           v-if="(user.api_token && user.username === currentUser) || (user.api_token && currentUser === 'admin')"
                           class="btn btn-sm"
                           @click="toggleTokenVisibility(user.id)"
                           style="padding: 0.1rem 0.4rem; font-size: 0.75em"
-                          :title="tokenVisible[user.id] ? 'Hide token' : 'Show token'"
-                        >
+                          :title="tokenVisible[user.id] ? 'Hide token' : 'Show token'">
                           {{ tokenVisible[user.id] ? 'Hide' : 'Show' }}
                         </button>
                         <button
@@ -220,8 +160,7 @@
                           class="btn btn-sm"
                           @click="copyToken(user.api_token)"
                           style="padding: 0.1rem 0.4rem; font-size: 0.75em"
-                          title="Copy token to clipboard"
-                        >
+                          title="Copy token to clipboard">
                           Copy
                         </button>
                         <button
@@ -229,8 +168,7 @@
                           class="btn btn-sm"
                           @click="generateToken(user)"
                           style="padding: 0.1rem 0.4rem; font-size: 0.75em"
-                          title="Generate new token"
-                        >
+                          title="Generate new token">
                           {{ user.api_token ? 'Regenerate' : 'Generate' }}
                         </button>
                         <button
@@ -238,8 +176,7 @@
                           class="btn btn-danger btn-sm"
                           @click="revokeToken(user)"
                           style="padding: 0.1rem 0.4rem; font-size: 0.75em"
-                          title="Revoke token"
-                        >
+                          title="Revoke token">
                           Revoke
                         </button>
                       </div>
@@ -247,35 +184,22 @@
                     <td>{{ formatDateTime(user.created_at) }}</td>
                     <td>{{ formatDateTime(user.updated_at) }}</td>
                     <td>
-                      <div v-if="user.username === 'syncer'">System user</div>
+                      <div v-if="user.username === 'syncer'">
+                        System user. If you change token here, don't forget to change it in env DNSDIST_SYNCER_TOKEN
+                      </div>
                       <div v-else>
                         <div v-if="currentUser == 'admin'">
-                          <button
-                            class="btn btn-sm"
-                            @click="startEdit(user)"
-                            style="margin-right: 0.3rem"
-                          >
-                            Edit
-                          </button>
+                          <button class="btn btn-sm" @click="startEdit(user)" style="margin-right: 0.3rem">Edit</button>
                           <button
                             class="btn btn-danger btn-sm"
                             @click="deleteUser(user)"
-                            :title="user.username === currentUser ? 'Cannot delete your own account' : ''"
-                          >
+                            :title="user.username === currentUser ? 'Cannot delete your own account' : ''">
                             Delete
                           </button>
                         </div>
 
-                        <div
-                          v-if="user.username === currentUser && !(currentUser == 'admin')"
-                        >
-                          <button
-                            class="btn btn-sm"
-                            @click="startEdit(user)"
-                            style="margin-right: 0.3rem"
-                          >
-                            Edit
-                          </button>
+                        <div v-if="user.username === currentUser && !(currentUser == 'admin')">
+                          <button class="btn btn-sm" @click="startEdit(user)" style="margin-right: 0.3rem">Edit</button>
                         </div>
                       </div>
                     </td>
