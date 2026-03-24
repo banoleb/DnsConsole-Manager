@@ -266,9 +266,10 @@ class DynBlockRule(Base, DateTimeSerializableMixin):
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     rule_uuid = Column(Text, nullable=False)
-
+    access_list_id = Column(Integer, ForeignKey('access_list.id'), nullable=True)
     # Relationship to group
     group = relationship('Group', foreign_keys=[group_id])
+    access = relationship('AccessList', foreign_keys=[access_list_id])
 
     def to_dict(self):
         """Convert dynblock rule to dictionary"""
@@ -283,31 +284,34 @@ class DynBlockRule(Base, DateTimeSerializableMixin):
             'is_active': self.is_active,
             'created_at': self._serialize_datetime(self.created_at),
             'updated_at': self._serialize_datetime(self.updated_at),
-            'rule_uuid': self.rule_uuid
+            'rule_uuid': self.rule_uuid,
+            'access_list_id': self.access_list_id,
+            'access_list_name': self.access.name if self.access else None,
+
         }
 
 
-class DynBlockRuleSyncStatus(Base, DateTimeSerializableMixin):
-    """Model for tracking which DynBlock rules are synced to which agents"""
-    __tablename__ = 'dynblock_rule_sync_status'
+# class DynBlockRuleSyncStatus(Base, DateTimeSerializableMixin):
+#     """Model for tracking which DynBlock rules are synced to which agents"""
+#     __tablename__ = 'dynblock_rule_sync_status'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    dynblock_rule_id = Column(Integer, nullable=False)
-    agent_name = Column(String(255), nullable=False)
-    last_synced_at = Column(DateTime, nullable=False)
-    sync_success = Column(Boolean, nullable=False)
-    error_message = Column(Text, nullable=True)
+#     id = Column(Integer, primary_key=True, autoincrement=True)
+#     dynblock_rule_id = Column(Integer, nullable=False)
+#     agent_name = Column(String(255), nullable=False)
+#     last_synced_at = Column(DateTime, nullable=False)
+#     sync_success = Column(Boolean, nullable=False)
+#     error_message = Column(Text, nullable=True)
 
-    def to_dict(self):
-        """Convert sync status to dictionary"""
-        return {
-            'id': self.id,
-            'dynblock_rule_id': self.dynblock_rule_id,
-            'agent_name': self.agent_name,
-            'last_synced_at': self._serialize_datetime(self.last_synced_at),
-            'sync_success': self.sync_success,
-            'error_message': self.error_message
-        }
+#     def to_dict(self):
+#         """Convert sync status to dictionary"""
+#         return {
+#             'id': self.id,
+#             'dynblock_rule_id': self.dynblock_rule_id,
+#             'agent_name': self.agent_name,
+#             'last_synced_at': self._serialize_datetime(self.last_synced_at),
+#             'sync_success': self.sync_success,
+#             'error_message': self.error_message
+#         }
 
 
 class RuleCommandTemplate(Base, DateTimeSerializableMixin):

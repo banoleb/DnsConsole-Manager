@@ -2816,6 +2816,12 @@ def create_dynblock_rule():
         else:
             group_id = int(group_id)
 
+        access_list_id = data.get('access_list_id')
+        if access_list_id in ('', 'all', None):
+            access_list_id = None
+        else:
+            access_list_id = int(access_list_id)
+
         # Auto-generate creation_order by finding the max value and incrementing
         max_order = session.query(sa.func.max(DynBlockRule.creation_order)).scalar()
         creation_order = (max_order or 0) + 1
@@ -2826,7 +2832,8 @@ def create_dynblock_rule():
             description=data.get('description') or None,
             group_id=group_id,
             creation_order=creation_order,
-            rule_uuid=get_uuid
+            rule_uuid=get_uuid,
+            access_list_id=access_list_id,
         )
 
         session.add(rule)
@@ -2835,7 +2842,7 @@ def create_dynblock_rule():
         # Re-query rule with group relationship eagerly loaded to avoid lazy loading
         rule = session.query(DynBlockRule).options(joinedload(DynBlockRule.group)).filter_by(id=rule.id).first()
 
-        logger.debug(f'fun:create_dynblock_rule:Created DynBlock rule: {rule.rule_command}')
+        logger.debug(f'fun:create_dynblock_rule:Created DynBlock rule: {rule.rule_command} {access_list_id}')
 
         # Log audit event
         log_audit(

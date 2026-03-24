@@ -6,11 +6,14 @@ createApp({
       activeTab: "dynblock",
       agents: [],
       groups: [],
+
       newDynBlockRule: {
         name: "api-rule1",
         rule_command: "",
         description: "",
         group_id: "",
+        access_list_name: "",
+        access_list_id: "",
       },
       dynBlockRulesList: [],
       selectedGroupFilter: "",
@@ -24,6 +27,7 @@ createApp({
         rule_command: "",
         description: "",
         group_id: "",
+        access_list_id: "",
       },
       editModalMessage: null,
       generatedUuid: "",
@@ -69,6 +73,11 @@ createApp({
       return this.dynBlockRulesList.filter((rule) => {
         return rule.group_id === parseInt(this.selectedGroupFilter);
       });
+    },
+    // Если нужен id по выбранному name
+    selectedListId() {
+      const selected = this.alEntries.find((e) => e.name === this.newDynBlockRule.access_list_name);
+      return selected ? selected.id : null;
     },
     alNameSuggestions() {
       const names = this.alEntries.map((e) => e.name).filter((n) => n && n.trim() !== "");
@@ -159,13 +168,16 @@ createApp({
           headers: {
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({
             name: this.newDynBlockRule.name,
             rule_command: this.newDynBlockRule.rule_command,
             description: this.newDynBlockRule.description,
             group_id: this.newDynBlockRule.group_id,
+            access_list_id: this.selectedListId,
           }),
         });
+
         const data = await response.json();
 
         if (data.success) {
@@ -174,6 +186,8 @@ createApp({
             rule_command: "",
             description: "",
             group_id: "",
+            access_list_id: "",
+            access_list_name: "",
           };
           this.loadDynBlockRules();
           this.showDynBlockRuleMessage("Rule added successfully!", "success");
@@ -213,76 +227,75 @@ createApp({
         this.showDynBlockRuleMessage("Error: " + error.message, "danger");
       }
     },
-    // async sendDynBlockRule(rule) {
-    //     // Basic validation: ensure command starts with expected DynBlock functions
-    //     const allowedPrefixes = ['addDynBlocks', 'setDynBlocksAction', 'clearDynBlocks', 'addDynBlockRule', 'addAction'];
-    //     const isValid = allowedPrefixes.some(prefix => rule.rule_command.trim().startsWith(prefix));
+    async sendDynBlockRule(rule, uuid) {
+      // Basic validation: ensure command starts with expected DynBlock functions
+      // const allowedPrefixes = ['addDynBlocks', 'setDynBlocksAction', 'clearDynBlocks', 'addDynBlockRule', 'addAction'];
+      // const isValid = allowedPrefixes.some(prefix => rule.rule_command.trim().startsWith(prefix));
 
-    //     if (!isValid) {
-    //         alert('Invalid DynBlock command. Must start with: ' + allowedPrefixes.join(', '));
-    //         return;
-    //     }
+      // if (!isValid) {
+      //     alert('Invalid DynBlock command. Must start with: ' + allowedPrefixes.join(', '));
+      //     return;
+      // }
 
-    //     // Confirmation dialog
-    //     const displayCommand = rule.rule_command.length > 80
-    //         ? rule.rule_command.substring(0, 80) + '...'
-    //         : rule.rule_command;
+      // Confirmation dialog
+      const displayCommand =
+        rule.rule_command.length > 80 ? rule.rule_command.substring(0, 80) + "..." : rule.rule_command;
 
-    //     let confirmMessage = `Send this DynBlock rule`;
-    //     if (rule.group_name) {
-    //         confirmMessage += ` to group "${rule.group_name}"?`;
-    //     } else {
-    //         confirmMessage += ` to all agents?`;
-    //     }
-    //     confirmMessage += `\n\nCommand: ${displayCommand}`;
+      let confirmMessage = `Send this DynBlock rule`;
+      if (rule.group_name) {
+        confirmMessage += ` to group "${rule.group_name}"?`;
+      } else {
+        confirmMessage += ` to all agents?`;
+      }
+      confirmMessage += `\n\nCommand: ${displayCommand}`;
 
-    //     if (!confirm(confirmMessage)) {
-    //         return;
-    //     }
+      if (!confirm(confirmMessage)) {
+        return;
+      }
 
-    //     // Send the rule command as a broadcast to agents in the linked group (or all if no group)
-    //     try {
-    //         const requestBody = { command: rule.rule_command };
+      // Send the rule command as a broadcast to agents in the linked group (or all if no group)
+      try {
+        const requestBody = { command: "rmRule('" + uuid + "')" + " " + rule.rule_command };
 
-    //         // If rule has a group_id, include it in the broadcast request
-    //         if (rule.group_id) {
-    //             requestBody.group_id = rule.group_id;
-    //         }
+        // If rule has a group_id, include it in the broadcast request
+        if (rule.group_id) {
+          requestBody.group_id = rule.group_id;
+        }
 
-    //         const response = await fetch('/api/command/broadcast', {
-    //             method: 'POST',
-    //             headers: {
-    //                 'Content-Type': 'application/json'
-    //             },
-    //             body: JSON.stringify(requestBody)
-    //         });
-    //         const data = await response.json();
+        const response = await fetch("/api/command/broadcast", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        });
+        const data = await response.json();
 
-    //         if (data.results && data.results.length > 0) {
-    //             const successCount = data.results.filter(r => r.success).length;
-    //             const failCount = data.results.length - successCount;
+        if (data.results && data.results.length > 0) {
+          const successCount = data.results.filter((r) => r.success).length;
+          const failCount = data.results.length - successCount;
 
-    //             let message = '';
-    //             if (rule.group_name) {
-    //                 message = `Rule sent to group "${rule.group_name}": `;
-    //             } else {
-    //                 message = 'Rule sent: ';
-    //             }
+          let message = "";
+          if (rule.group_name) {
+            message = `Rule sent to group "${rule.group_name}": `;
+          } else {
+            message = "Rule sent: ";
+          }
 
-    //             if (failCount === 0) {
-    //                 message += `${successCount} agent${successCount !== 1 ? 's' : ''} succeeded`;
-    //                 this.showDynBlockRuleMessage(message, 'success');
-    //             } else {
-    //                 message += `${successCount} succeeded, ${failCount} failed`;
-    //                 this.showDynBlockRuleMessage(message, 'warning');
-    //             }
-    //         } else {
-    //             this.showDynBlockRuleMessage('No agents available in the selected group', 'warning');
-    //         }
-    //     } catch (error) {
-    //         this.showDynBlockRuleMessage('Error sending rule: ' + error.message, 'danger');
-    //     }
-    // },
+          if (failCount === 0) {
+            message += `${successCount} agent${successCount !== 1 ? "s" : ""} succeeded`;
+            this.showDynBlockRuleMessage(message, "success");
+          } else {
+            message += `${successCount} succeeded, ${failCount} failed`;
+            this.showDynBlockRuleMessage(message, "warning");
+          }
+        } else {
+          this.showDynBlockRuleMessage("No agents available in the selected group", "warning");
+        }
+      } catch (error) {
+        this.showDynBlockRuleMessage("Error sending rule: " + error.message, "danger");
+      }
+    },
     showDynBlockRuleMessage(text, type) {
       this.dynBlockRuleMessage = { text, type };
       setTimeout(() => {
@@ -420,6 +433,7 @@ createApp({
         this.selectedTemplateIndex = -1;
       }
     },
+
     selectTemplate(template) {
       // Replace placeholders with actual values
       let filledTemplate = template.template;
@@ -433,14 +447,26 @@ createApp({
       if (this.generatedUuid) {
         filledTemplate = filledTemplate.replace(/\{\{r_uuid\}\}/g, this.generatedUuid);
       }
-
-      // Replace r_access_list placeholder with selected access list name
-      if (this.selectedAccessListName) {
+      if (this.newDynBlockRule.access_list_name) {
         filledTemplate = filledTemplate.replace(
           /\{\{r_access_list\}\}/g,
-          "webconsole_lists." + this.selectedAccessListName,
+          "webconsole_lists." + this.newDynBlockRule.access_list_name,
         );
+        console.log(this.newDynBlockRule.access_list_name); // name
+        console.log(this.selectedListId); // id
       }
+      // // Replace r_access_list placeholder with selected access list name
+      // if (this.newDynBlockRule.access_list_id) {
+      //   this.selectedAccessListName = this.newDynBlockRule.access_list_id
+      //   filledTemplate = filledTemplate.replace(
+      //     /\{\{r_access_list\}\}/g,
+      //     "webconsole_lists." + this.selectedAccessListName,
+      //   );
+      // }
+      // if (this.newDynBlockRule.access_list_id) {
+      //   filledTemplate = filledTemplate.replace(/\{\{r_access_list\}\}/g,  "webconsole_lists." + this.newDynBlockRule.access_list_id);
+      //   console.log(this.newDynBlockRule.access_list_id)
+      // }
 
       this.newDynBlockRule.rule_command = filledTemplate;
       this.showTemplateDropdown = false;

@@ -1006,7 +1006,7 @@ a:active {
 
 .text-muted {
   color: #777676;
-  font-size: 1rem;
+  /* font-size: 1rem; */
 }
 
 .text-danger {
@@ -1625,4 +1625,28 @@ input:checked + .slider:before {
   gap: 6px 8px;
   padding: 2px 0;
   display: flex;
+}
+
+.rule {
+  font-family: monospace;
+  font-size: 13px;
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.list-link {
+  color: #ff6b6b;
+  font-weight: bold;
+  background: #fff0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.list-link:hover {
+  background: #ffe0e0;
 }
