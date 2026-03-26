@@ -27,6 +27,7 @@ Vue.createApp({
     isActivePage(path) {
       return window.location.pathname === path;
     },
+
     async fetchBackendHealth() {
       try {
         const response = await fetch("/api/backend-health");
@@ -135,6 +136,12 @@ Vue.createApp({
   mounted() {
     // Load theme preference
     this.loadTheme();
+    console.log(
+      "%c DnsConsole-Manager (beta v0.0.4)! %c\n\n" +
+        "Does this page need fixes or improvements? Open an issue or contribute a merge request to help make the app better. https://github.com/banoleb/DnsConsole-Manager \n",
+      "background: #42b983; color: white; font-size: 14px; padding: 4px 8px; border-radius: 4px;",
+      "color: #42b983; font-size: 12px;",
+    );
     // console.log('1. this.$el:', this.$el);
     // console.log('2. this.$el.outerHTML:', this.$el.outerHTML);
     // console.log('3. this.$el.dataset:', this.$el.dataset);

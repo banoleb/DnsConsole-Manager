@@ -20,37 +20,24 @@ createApp({
       loadingDynBlockRules: false,
       dynBlockRuleMessage: null,
       isRefreshing: false,
-      showEditModal: false,
-      editingRule: {
-        id: null,
-        name: "",
-        rule_command: "",
-        description: "",
-        group_id: "",
-        access_list_id: "",
-      },
-      editModalMessage: null,
+
       generatedUuid: "",
       ruleCommandTemplates: [],
       showTemplateDropdown: false,
       filteredTemplates: [],
       selectedTemplateIndex: -1,
-      showTemplateManagerModal: false,
       editingTemplate: {
         id: null,
         name: "",
         template: "",
         description: "",
       },
-      templateModalMessage: null,
       selectedAccessListName: "",
       // Access List state
       alEntries: [],
       alLoading: false,
       alSaving: false,
       alEditingEntry: null,
-      alFormError: null,
-      alFormSuccess: null,
       alFilterType: "",
       alFilterCategory: "",
       alFilterEnabled: "",
@@ -74,7 +61,6 @@ createApp({
         return rule.group_id === parseInt(this.selectedGroupFilter);
       });
     },
-    // Если нужен id по выбранному name
     selectedListId() {
       const selected = this.alEntries.find((e) => e.name === this.newDynBlockRule.access_list_name);
       return selected ? selected.id : null;
@@ -105,6 +91,12 @@ createApp({
     this.loadAccessListEntries();
   },
   methods: {
+    showDynBlockRuleMessage(text, type) {
+      this.dynBlockRuleMessage = { text, type };
+      setTimeout(() => {
+        this.dynBlockRuleMessage = null;
+      }, 5000);
+    },
     async loadRuleCommandTemplates() {
       try {
         const response = await fetch("/api/rule-command-templates");
@@ -179,7 +171,6 @@ createApp({
         });
 
         const data = await response.json();
-
         if (data.success) {
           this.newDynBlockRule = {
             name: "",
@@ -202,7 +193,6 @@ createApp({
       // Sanitize the command for display in the confirmation dialog
       const displayCommand =
         rule.rule_command.length > 80 ? rule.rule_command.substring(0, 80) + "..." : rule.rule_command;
-
       if (
         !confirm(
           `Deleting a rule does not remove it from agents.\nFirst, make sure you have deactivated this rule and check that it has been removed from the agents.\nAnd only after that you can delete it:\nCommand: ${displayCommand}`,
@@ -252,7 +242,6 @@ createApp({
       if (!confirm(confirmMessage)) {
         return;
       }
-
       // Send the rule command as a broadcast to agents in the linked group (or all if no group)
       try {
         const requestBody = { command: "rmRule('" + uuid + "')" + " " + rule.rule_command };
@@ -284,7 +273,7 @@ createApp({
 
           if (failCount === 0) {
             message += `${successCount} agent${successCount !== 1 ? "s" : ""} succeeded`;
-            this.showDynBlockRuleMessage(message, "success");
+            this.showDynBlockRuleMessage(message + requestBody, "success");
           } else {
             message += `${successCount} succeeded, ${failCount} failed`;
             this.showDynBlockRuleMessage(message, "warning");
@@ -296,12 +285,7 @@ createApp({
         this.showDynBlockRuleMessage("Error sending rule: " + error.message, "danger");
       }
     },
-    showDynBlockRuleMessage(text, type) {
-      this.dynBlockRuleMessage = { text, type };
-      setTimeout(() => {
-        this.dynBlockRuleMessage = null;
-      }, 5000);
-    },
+
     async toggleRuleActive(rule) {
       try {
         const response = await fetch(`/api/dynblock-rules/${rule.id}`, {
@@ -330,69 +314,9 @@ createApp({
         this.showDynBlockRuleMessage("Error toggling rule: " + error.message, "danger");
       }
     },
-    openEditModal(rule) {
-      this.editingRule = {
-        id: rule.id,
-        name: rule.name || "",
-        rule_command: rule.rule_command,
-        description: rule.description || "",
-        group_id: rule.group_id || "",
-      };
-      this.showEditModal = true;
-      this.editModalMessage = null;
-    },
-    closeEditModal() {
-      this.showEditModal = false;
-      this.editingRule = {
-        id: null,
-        name: "",
-        rule_command: "",
-        description: "",
-        group_id: "",
-      };
-      this.editModalMessage = null;
-    },
-    async saveEditedRule() {
-      try {
-        const response = await fetch(`/api/dynblock-rules/${this.editingRule.id}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: this.editingRule.name,
-            rule_command: this.editingRule.rule_command,
-            description: this.editingRule.description,
-            group_id: this.editingRule.group_id,
-          }),
-        });
-        const data = await response.json();
 
-        if (data.success) {
-          // Update the rule in the list
-          const index = this.dynBlockRulesList.findIndex((r) => r.id === this.editingRule.id);
-          if (index !== -1) {
-            this.dynBlockRulesList[index] = data.rule;
-          }
-          this.showDynBlockRuleMessage("Rule updated successfully!", "success");
-          this.closeEditModal();
-        } else {
-          this.editModalMessage = {
-            text: "Error: " + data.error,
-            type: "danger",
-          };
-        }
-      } catch (error) {
-        this.editModalMessage = {
-          text: "Error: " + error.message,
-          type: "danger",
-        };
-      }
-    },
     onRuleCommandInput(event) {
       const input = event.target.value;
-      const cursorPosition = event.target.selectionStart;
-
       // Check if the last character typed is a letter or if we're typing
       if (input.length > 0) {
         // Filter templates based on the current input
@@ -501,26 +425,6 @@ createApp({
         });
       }
     },
-    // openTemplateManagerModal() {
-    //     this.showTemplateManagerModal = true;
-    //     this.templateModalMessage = null;
-    //     this.editingTemplate = {
-    //         id: null,
-    //         name: '',
-    //         template: '',
-    //         description: ''
-    //     };
-    // },
-    // closeTemplateManagerModal() {
-    //     this.showTemplateManagerModal = false;
-    //     this.templateModalMessage = null;
-    //     this.editingTemplate = {
-    //         id: null,
-    //         name: '',
-    //         template: '',
-    //         description: ''
-    //     };
-    // },
     editTemplate(template) {
       this.editingTemplate = {
         id: template.id,
@@ -528,7 +432,8 @@ createApp({
         template: template.template,
         description: template.description || "",
       };
-      this.templateModalMessage = null;
+
+      this.DynBlockRuleMessage = null;
     },
     cancelEditTemplate() {
       this.editingTemplate = {
@@ -537,7 +442,7 @@ createApp({
         template: "",
         description: "",
       };
-      this.templateModalMessage = null;
+      this.DynBlockRuleMessage = null;
     },
     async saveTemplate() {
       try {
@@ -571,26 +476,12 @@ createApp({
           };
 
           const action = isEdit ? "updated" : "added";
-          this.templateModalMessage = {
-            text: `Template ${action} successfully!`,
-            type: "success",
-          };
-
-          // Clear success message after 3 seconds
-          setTimeout(() => {
-            this.templateModalMessage = null;
-          }, 3000);
+          this.showDynBlockRuleMessage(`Template ${action} successfully!`, "success");
         } else {
-          this.templateModalMessage = {
-            text: "Error: " + data.error,
-            type: "danger",
-          };
+          this.showDynBlockRuleMessage("Error: " + data.error, "danger");
         }
       } catch (error) {
-        this.templateModalMessage = {
-          text: "Error: " + error.message,
-          type: "danger",
-        };
+        this.showDynBlockRuleMessage("Error: " + error.message, "danger");
       }
     },
     async deleteTemplate(template) {
@@ -607,27 +498,12 @@ createApp({
         if (data.success) {
           // Reload templates
           await this.loadRuleCommandTemplates();
-
-          this.templateModalMessage = {
-            text: "Template deleted successfully!",
-            type: "success",
-          };
-
-          // Clear success message after 3 seconds
-          setTimeout(() => {
-            this.templateModalMessage = null;
-          }, 3000);
+          this.showDynBlockRuleMessage("Template deleted successfully!", "success");
         } else {
-          this.templateModalMessage = {
-            text: "Error: " + data.error,
-            type: "danger",
-          };
+          this.showDynBlockRuleMessage("Error: " + error.error, "danger");
         }
       } catch (error) {
-        this.templateModalMessage = {
-          text: "Error: " + error.message,
-          type: "danger",
-        };
+        this.showDynBlockRuleMessage("Error: " + error.message, "danger");
       }
     },
 
@@ -647,9 +523,11 @@ createApp({
           this.alEntries = data.entries;
         } else {
           console.error("Failed to load access list entries:", data.error);
+          this.showDynBlockRuleMessage("Failed to load lists. Please try again", "danger");
         }
       } catch (error) {
         console.error("Error loading access list entries:", error);
+        this.showDynBlockRuleMessage("Failed to load lists. Please try again", "danger");
       } finally {
         this.alLoading = false;
       }
@@ -671,8 +549,6 @@ createApp({
         source: entry.source || "",
         name: entry.name || "",
       };
-      this.alFormError = null;
-      this.alFormSuccess = null;
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
     alCancelEdit() {
@@ -686,12 +562,8 @@ createApp({
         source: "",
         name: "",
       };
-      this.alFormError = null;
-      this.alFormSuccess = null;
     },
     async alSubmitForm() {
-      this.alFormError = null;
-      this.alFormSuccess = null;
       this.alSaving = true;
       try {
         const payload = {
@@ -716,17 +588,16 @@ createApp({
         });
         const data = await response.json();
         if (data.success) {
-          this.alFormSuccess = this.alEditingEntry
-            ? `Entry "${data.entry.value}" updated successfully.`
-            : `Entry "${data.entry.value}" created successfully.`;
+          this.showDynBlockRuleMessage("List edit successfully!", "success");
           this.alCancelEdit();
           await this.loadAccessListEntries();
         } else {
-          this.alFormError = data.error || "An error occurred.";
+          this.showDynBlockRuleMessage(data.error || "An error occurred.", "danger");
         }
       } catch (error) {
         console.error("Error saving entry:", error);
-        this.alFormError = "Failed to save entry. Please try again.";
+
+        this.showDynBlockRuleMessage("Failed to save entry. Please try again", "danger");
       } finally {
         this.alSaving = false;
       }
@@ -742,6 +613,7 @@ createApp({
         const data = await response.json();
         if (data.success) {
           await this.loadAccessListEntries();
+          this.showDynBlockRuleMessage("List delete successfully!", "success");
         } else {
           alert(`Error: ${data.error}`);
         }

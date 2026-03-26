@@ -10,6 +10,9 @@
       <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
     <div id="app">
+      <div v-if="dynBlockRuleMessage" :class="['alert', `alert-${dynBlockRuleMessage.type}`]" class="mt-3">
+        {{ dynBlockRuleMessage.text }}
+      </div>
       <!-- Main Container -->
       <div class="container">
         <div class="card">
@@ -40,6 +43,7 @@
         <!-- ======================================================= -->
         <div v-if="activeTab === 'dynblock'">
           <!-- Add Rule Form -->
+
           <div class="card mb-4">
             <div class="card-body">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem">
@@ -220,6 +224,7 @@
             </div>
           </div>
           <!-- Existing DynBlock Rules List -->
+
           <div class="card">
             <div class="card-header primary">
               <select class="form-control" v-model="selectedGroupFilter" style="width: 30%">
@@ -228,9 +233,6 @@
               </select>
             </div>
             <div>
-              <div v-if="dynBlockRuleMessage" :class="['alert', `alert-${dynBlockRuleMessage.type}`]" class="mt-3">
-                {{ dynBlockRuleMessage.text }}
-              </div>
               <div class="card-body">
                 <div v-if="loadingDynBlockRules" class="text-muted text-center">Loading rules...</div>
                 <div v-else-if="filteredDynBlockRulesList.length === 0" class="text-muted text-center">
@@ -240,12 +242,10 @@
                   <table style="width: 100%; border-collapse: collapse">
                     <thead>
                       <tr style="border-bottom: 2px solid var(--btn-hover-border)">
-                        <th style="text-align: left; padding: 0.5rem" width="10%">Name</th>
-                        <th style="text-align: left; padding: 0.5rem" width="55%">Command</th>
+                        <th style="text-align: left; padding: 0.5rem" width="84%">Command</th>
 
-                        <th style="text-align: left; padding: 0.5rem" width="5%">Group</th>
-                        <th style="text-align: center; padding: 0.5rem" width="5%">Active</th>
-                        <th style="text-align: center; padding: 0.5rem" width="15%">Actions</th>
+                        <th style="text-align: center; padding: 0.5rem" width="8%">Active</th>
+                        <th style="text-align: center; padding: 0.5rem" width="8%">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -253,34 +253,61 @@
                         v-for="rule in filteredDynBlockRulesList"
                         :key="rule.id"
                         style="border-bottom: 2px dashed var(--btn-hover-border)">
-                        <td style="padding: 0.75rem">
-                          {{ rule.name || '-' }}
-                          <p></p>
-                          <small class="form-text text-muted">( {{ rule.description }} )</small>
-                        </td>
                         <td style="padding: 0.75rem; font-family: monospace; font-size: 0.9rem">
-                          <b>Command:</b>
-                          {{ rule.rule_command }}
-                          <br />
-                          <b>UUID:</b>
-                          <a :href="'/rules/' + rule.rule_uuid">
-                            <small class="form-text text-muted">{{ rule.rule_uuid }}</small>
-                          </a>
-                          <br />
-                          <div v-if="rule.access_list_name">
-                            <b>ACL:</b>
-                            <a href="#" @click.prevent="activeTab = 'accesslist'">
-                              <small class="form-text text-muted">
-                                webconsole_lists.{{ rule.access_list_name || '-' }}
-                              </small>
-                            </a>
-                          </div>
+                          <table>
+                            <tr>
+                              <td>
+                                <b>Name:</b>
+                              </td>
+                              <td>
+                                🛡️
+                                <b>{{ rule.name || '-' }}</b>
+                                <small class="form-text text-muted">( {{ rule.description }} )</small>
+                                Groups:
+                                <span v-if="rule.group_name" class="badge badge-primary">{{ rule.group_name }}</span>
+                                <span v-else class="text-muted">All Groups</span>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>
+                                <b>Command:</b>
+                              </td>
+                              <td>
+                                <div class="topo-dynblock-chip">{{ rule.rule_command }}</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>
+                                <b>UUID:</b>
+                              </td>
+                              <td>
+                                <a :href="'/rules/' + rule.rule_uuid">{{ rule.rule_uuid }}</a>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>
+                                <b>ACL:</b>
+                              </td>
+                              <td>
+                                <div v-if="rule.access_list_name">
+                                  <a href="#" @click.prevent="activeTab = 'accesslist'">
+                                    webconsole_lists.{{ rule.access_list_name || '-' }}
+                                  </a>
+                                </div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>
+                                <b>Info:</b>
+                              </td>
+                              <td>
+                                <small class="form-text text-muted">Created: {{ rule.created_at }}</small>
+                                <small class="form-text text-muted">Synced: {{ rule.updated_at }}</small>
+                              </td>
+                            </tr>
+                          </table>
                         </td>
 
-                        <td style="padding: 0.75rem">
-                          <span v-if="rule.group_name" class="badge badge-primary">{{ rule.group_name }}</span>
-                          <span v-else class="text-muted">All Groups</span>
-                        </td>
                         <td style="padding: 0.75rem; text-align: center">
                           <div class="tooltip-container">
                             <span class="help-icon">?</span>
@@ -300,7 +327,7 @@
                             ✏️ Edit
                           </button> -->
                           <button class="btn-small" @click="deleteDynBlockRule(rule)">🗑️ Delete</button>
-                          <button class="btn-small" @click="sendDynBlockRule(rule,rule.rule_uuid)">ReSend</button>
+                          <button class="btn-small" @click="sendDynBlockRule(rule,rule.rule_uuid)">Force Sync</button>
                         </td>
                       </tr>
                     </tbody>
@@ -323,8 +350,7 @@
                 Manage blocklist and whitelist entries (use j2 var "r_access_list" in templates) or use command:
                 manager:show_all()
               </p>
-              <div v-if="alFormError" class="alert alert-danger mb-3">{{ alFormError }}</div>
-              <div v-if="alFormSuccess" class="alert alert-success mb-3">{{ alFormSuccess }}</div>
+
               <form @submit.prevent="alSubmitForm">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
                   <div class="mb-3">
@@ -604,9 +630,6 @@
                   </div>
                 </div>
               </form>
-              <div v-if="templateModalMessage" :class="['alert', `alert-${templateModalMessage.type}`]" class="mt-3">
-                {{ templateModalMessage.text }}
-              </div>
             </div>
 
             <!-- Existing Templates List -->
@@ -670,75 +693,6 @@
                     </tr>
                   </tbody>
                 </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Edit DynBlock Rule Modal -->
-        <div v-if="showEditModal" class="modal-backdrop" @click.self="closeEditModal">
-          <div class="modal">
-            <div class="modal-header">
-              <h5 class="modal-title">✏️ Edit DynBlock Rule</h5>
-              <button @click="closeEditModal" class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-              <div>
-                <h3>👉 Before editing, deactivate the rule. Make sure it has disappeared from the agents.</h3>
-                <h3>👉 And only after that edit and turn on (enable) again</h3>
-              </div>
-              <form @submit.prevent="saveEditedRule">
-                <div class="mb-3">
-                  <label class="form-label">
-                    Agent Group
-                    <span class="text-muted">(optional)</span>
-                  </label>
-                  <select class="form-control" v-model="editingRule.group_id">
-                    <option value="">All Groups</option>
-                    <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-                  </select>
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">
-                    Name
-                    <span class="text-muted">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    v-model="editingRule.name"
-                    placeholder="e.g., Block Abusive IPs" />
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">
-                    Rule Command
-                    <span class="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    v-model="editingRule.rule_command"
-                    placeholder="e.g., addDynBlocks({'192.168.1.100'}, 'Blocked for abuse', 60)"
-                    required />
-                </div>
-                <div class="mb-3">
-                  <label class="form-label">
-                    Description
-                    <span class="text-muted">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    v-model="editingRule.description"
-                    placeholder="e.g., Block specific IP for testing" />
-                </div>
-                <div style="display: flex; gap: 0.5rem; justify-content: flex-end">
-                  <button type="button" class="btn btn-secondary" @click="closeEditModal">Cancel</button>
-                  <button type="submit" class="btn btn-success">Save Changes</button>
-                </div>
-              </form>
-              <div v-if="editModalMessage" :class="['alert', `alert-${editModalMessage.type}`]" class="mt-3">
-                {{ editModalMessage.text }}
               </div>
             </div>
           </div>

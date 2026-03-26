@@ -237,23 +237,23 @@ def determine_category(name):
 
 def sync_accesslist_to_database(agent_name, parsed_data, session):
 
-    logger.debug(f"fun: sync_accesslist_to_database: start sync {agent_name}")
+    logger.debug(f"fun:sync_accesslist_to_database: start sync {agent_name}")
     try:
         current_records = session.query(ManagerList).filter_by(
             agent_name=agent_name
         ).all()
         existing_records = {record.name: record for record in current_records}
 
-        logger.debug(f"fun: sync_accesslist_to_database: data from {agent_name}")
+        logger.debug(f"fun:sync_accesslist_to_database: data from {agent_name}")
         for name, record in existing_records.items():
-            logger.debug(f"fun: sync_accesslist_to_database: {name}: {record.value}")
+            logger.debug(f"fun:sync_accesslist_to_database: {name}: {record.value}")
 
-        logger.debug(f"fun: sync_accesslist_to_database: new data {agent_name}")
+        logger.debug(f"fun:sync_accesslist_to_database: new data {agent_name}")
         for name, values in parsed_data.items():
             if values:
-                logger.debug(f"fun: sync_accesslist_to_database:  {name}: {values}")
+                logger.debug(f"fun:sync_accesslist_to_database:  {name}: {values}")
             else:
-                logger.debug(f"fun: sync_accesslist_to_database:  {name}: empty")
+                logger.debug(f"fun:sync_accesslist_to_database:  {name}: empty")
 
         added_count = 0
         updated_count = 0
@@ -266,23 +266,23 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
                 values_str = ', '.join(values)
             else:
                 values_str = ''
-            logger.debug(f"fun: sync_accesslist_to_database: start work {name}")
+            logger.debug(f"fun:sync_accesslist_to_database: start work {name}")
             if name in existing_records:
                 record = existing_records[name]
                 if record.value != values_str or record.category != category:
-                    logger.debug(f"fun: sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
+                    logger.debug(f"fun:sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
                     record.value = values_str
                     record.category = category
-                    record.updated_at = datetime.now(timezone.UTC)
+                    record.updated_at = datetime.now(timezone.utc)
                     updated_count += 1
                 else:
-                    logger.debug(f"fun: sync_accesslist_to_database: no changes for {name}")
+                    logger.debug(f"fun:sync_accesslist_to_database: no changes for {name}")
                     skipped_count += 1
 
                 del existing_records[name]
             else:
                 if values_str:
-                    logger.debug(f"fun: sync_accesslist_to_database: new item {name} = {values_str}")
+                    logger.debug(f"fun:sync_accesslist_to_database: new item {name} = {values_str}")
                     new_item = ManagerList(
                         name=name,
                         agent_name=agent_name,
@@ -292,24 +292,24 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
                     session.add(new_item)
                     added_count += 1
                 else:
-                    logger.debug(f"fun: sync_accesslist_to_database: skip empty for {name}")
+                    logger.debug(f"fun:sync_accesslist_to_database: skip empty for {name}")
 
         for name, record in existing_records.items():
-            logger.debug(f"fun: sync_accesslist_to_database:  remove old list {name} = {record.value}")
+            logger.debug(f"fun:sync_accesslist_to_database:  remove old list {name} = {record.value}")
             session.delete(record)
             deleted_count += 1
 
         session.commit()
-        logger.debug(f"fun: sync_accesslist_to_database: stats: {agent_name}")
-        logger.debug(f"fun: sync_accesslist_to_database: added: {added_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: updated: {updated_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: deleted: {deleted_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: skiped: {skipped_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: stats: {agent_name}")
+        logger.debug(f"fun:sync_accesslist_to_database: added: {added_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: updated: {updated_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: deleted: {deleted_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: skiped: {skipped_count}")
 
         return True
 
     except Exception as e:
-        logger.error(f'sync_accesslist_to_database error for agent {agent_name}: {str(e)}')
+        logger.error(f'fun:sync_accesslist_to_database error for agent {agent_name}: {str(e)}')
         session.rollback()
         return False
 
@@ -353,14 +353,14 @@ def normalize_parsed_data(parsed_data):
 
 def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
-    logger.debug(f"fun: sync_accesslist_to_agents: start sync {agent.agent_name}")
+    logger.debug(f"fun:sync_accesslist_to_agents: start sync {agent.agent_name}")
     parsed_data = normalize_parsed_data(raw_parsed_data)
-    logger.debug(f"fun: sync_accesslist_to_agents: data from agent {agent.agent_name}")
+    logger.debug(f"fun:sync_accesslist_to_agents: data from agent {agent.agent_name}")
     for list_name, values in parsed_data.items():
         if values:
-            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: {values}")
+            logger.debug(f"fun:sync_accesslist_to_agents: data from agent {list_name}: {values}")
         else:
-            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: empty")
+            logger.debug(f"fun:sync_accesslist_to_agents: data from agent {list_name}: empty")
 
     access_items = session.query(AccessList).filter_by(
         enabled=True
@@ -376,33 +376,33 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
         for val in values:
             truth_lists[list_name].add(val)
     # truth_list ={'blocklist': {'1.2.3.0', '192.168.0.1'}, 'domain_spam': {'1.1.2.3'}, 'ip_ip_list': {'6.6.6.6'}}
-    logger.debug(f"fun: sync_accesslist_to_agents: (source of truth - what SHOULD be on an agent) {truth_lists}")
+    logger.debug(f"fun:sync_accesslist_to_agents: (source of truth - what SHOULD be on an agent) {truth_lists}")
     for list_name, values in truth_lists.items():
-        logger.debug(f"fun: sync_accesslist_to_agents: {list_name}: {(values)}")
+        logger.debug(f"fun:sync_accesslist_to_agents: {list_name}: {(values)}")
     commands_sent = 0
     # parsed_data.keys() =  dict_keys(['domain_spam', 'ip_ip_list', 'tttttt'])
     if parsed_data:
         for agent_list_name in parsed_data.keys():
-            logger.debug(f"fun: sync_accesslist_to_agents: {agent_list_name} ")
+            logger.debug(f"fun:sync_accesslist_to_agents: {agent_list_name} ")
             found_in_truth = False
             if agent_list_name in truth_lists.keys():
-                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents: compare: , {agent_list_name}")
                 found_in_truth = True
             else:
-                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents: compare: , {agent_list_name}")
             if not found_in_truth:
-                logger.debug(f"fun: sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
                 command = f'manager:remove_list("{agent_list_name}")'
                 try:
                     response = command_to_send(agent, command)
                     time.sleep(0.1)
                     if response.status_code == 200:
-                        logger.debug(f"fun: sync_accesslist_to_agents: Successfully {agent_list_name}")
+                        logger.debug(f"fun:sync_accesslist_to_agents: Successfully {agent_list_name}")
                         commands_sent += 1
                     else:
-                        logger.debug(f"fun: sync_accesslist_to_agents: error {agent_list_name}")
+                        logger.debug(f"fun:sync_accesslist_to_agents: error {agent_list_name}")
                 except Exception as e:
-                    logger.error(f"fun: sync_accesslist_to_agents: error {str(e)}")
+                    logger.error(f"fun:sync_accesslist_to_agents: error {str(e)}")
 
     for truth_name, truth_values in truth_lists.items():
         logger.debug(f"fun: sync_accesslist_to_agents: Processing a list from AccessList {truth_name}")
@@ -410,27 +410,27 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
         try:
             # dict_keys(['domain_whitelist', 'domain_spam', 'ip_ip_list', 'tttttt'])
             parsed_values_for_list = {}
-            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {agent.agent_name}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Agent data {agent.agent_name}")
             for list_name, values in parsed_data.items():
-                logger.debug(f"fun: sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
                 if list_name == truth_name:
                     parsed_values_for_list = values
 
-            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
             parsed_values_for_list = set(parsed_values_for_list)
-            logger.debug(f"fun: sync_accesslist_to_agents:Target list on agent {target_list_name}")
-            logger.debug(f"fun: sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
-            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target list on agent {target_list_name}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target  {truth_values}")
             to_add = truth_values - parsed_values_for_list
-            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
             for item in to_add:
-                logger.debug(f"fun: sync_accesslist_to_agents:Add: {item}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Add: {item}")
                 command = f'manager:add("{target_list_name}", "{item}")'
                 command_to_send(agent, command)
 
             to_remove = parsed_values_for_list - truth_values
             for item in to_remove:
-                logger.debug(f"fun: sync_accesslist_to_agents:Delete: {item}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Delete: {item}")
                 command = f'manager:remove("{target_list_name}", "{item}")'
                 if command_to_send(agent, command):
                     commands_sent += 1
@@ -439,9 +439,9 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
         except Exception as e:
             logger.warning(f' {str(e)}')
     if commands_sent == 0:
-        logger.debug(f"fun: sync_accesslist_to_agents:Data is synchronized, no commands required.{agent.agent_name}")
+        logger.debug(f"fun:sync_accesslist_to_agents:Data is synchronized, no commands required.{agent.agent_name}")
     else:
-        logger.info(f"fun: sync_accesslist_to_agents:SYNCHRONIZATION COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
+        logger.info(f"fun:sync_accesslist_to_agents:SYNC COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
     return {
         'success': True,
         'commands_sent': commands_sent,
@@ -954,6 +954,7 @@ async def sync_data():
                                 rules_success = True
                             else:
                                 rules_success = False
+
                     else:
                         agent_status = 'error'  # Non-200 response
                 except requests.exceptions.RequestException as e:
@@ -1256,7 +1257,8 @@ def login():
                     next_url = request.args.get('next') or url_for('dashboard')
                     return redirect(next_url)
                 error = 'Invalid username or password.'
-                logger.error(f'fun:login:Invalid username or password {user.username}')
+                logger.error(f'fun:login:Invalid username or password {username}')
+                log_audit('LOGIN', f'Invalid username or password "{username}"')
             finally:
                 db_session.close()
 

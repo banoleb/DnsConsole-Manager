@@ -452,11 +452,19 @@ createApp({
         const data = await response.json();
         // console.log(data.success)
         // console.log(data)
+        let output = "";
+
+        const statusIcon = data.success ? "✓ Ok" : "✗ Error";
+        const statusColor = data.success ? "#28a745" : "#dc3545";
+
+        output += `<div style="color: ${statusColor}; font-weight: bold;">${statusIcon} ${this.escapeHtml(data.agent_name)}</div>`;
+        output += "\n" + " Command: " + command;
+
         if (data.success) {
           // Check if this is showRules() with parsed data
           if (data.parsed_rules && Array.isArray(data.parsed_rules)) {
             // Format parsed rules as a nice table
-            let output = '<span style="color: #28a745;">✓ Success</span>\n\n' + " Command: " + command;
+
             output += '<div style="margin-top: 10px;">';
             output += "<strong>Rules Information:</strong><br>";
             output += '<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">';
@@ -495,7 +503,7 @@ createApp({
             // Check if this is showServers() with parsed data
           } else if (data.parsed_servers && Array.isArray(data.parsed_servers)) {
             // Format parsed servers as a nice table
-            let output = '<span style="color: #28a745;">✓ Success</span>\n\n' + " Command: " + command;
+            output += '<span style="color: #28a745;">✓ Success</span>\n\n' + " Command: " + command;
             output += '<div style="margin-top: 10px;">';
             output += "<strong>Servers Information:</strong><br>";
             output += '<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em;">';
@@ -542,18 +550,20 @@ createApp({
           } else {
             this.agentOutputs[index] =
               `<span style="color: #28a745;">✓ Success</span>\n` +
-              "\nCommand: " +
               command +
               `\n${this.escapeHtml(data.result || "Command executed successfully")}`;
           }
         } else {
+          // html += `<div style="color: #dc3545; margin-top: 5px;">Error: ${this.escapeHtml(result.result || result.error)}</div>`;
+          // html += `<div font-weight: bold;">Command: ${command}</div>`;
+
           this.agentOutputs[index] =
-            `<span style="color: #dc3545;">✗ Error</span>\n` +
-            "\nCommand: " +
+            `<div style="color: #dc3545;">✗ Error\n</div>` +
+            "<div>Command:" +
             command +
-            `\n${this.escapeHtml(data.result || data.error)}` +
-            "\nCommand: " +
-            command;
+            "</div>" +
+            `<div style="color: #dc3545;">\n${this.escapeHtml(data.result || data.error)}` +
+            "</div>";
         }
       } catch (error) {
         this.agentOutputs[index] =
