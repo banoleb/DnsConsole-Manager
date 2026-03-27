@@ -17,6 +17,7 @@ import sqlalchemy as sa
 import urllib3
 from flask import (Flask, jsonify, redirect, render_template, request,
                    send_from_directory, session, url_for)
+from metrics import MetricsExporter
 from models import (AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
                     Database, DownstreamServer, DynBlockRule, Group,
                     ManagerList, Rule, RuleCommandTemplate, SyncStatus,
@@ -24,12 +25,11 @@ from models import (AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
 from settings import settings
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
-from victoria_metrics import VictoriaMetricsExporter
 
 settings.configure_logging()
 logger = logging.getLogger('web-console-manager')
 db = None
-victoria_metrics_exporter = None
+metrics_exporter = None
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -38,7 +38,7 @@ def create_app():
     Flask application factory
     """
 
-    global db, victoria_metrics_exporter
+    global db, metrics_exporter
 
     flask_app = Flask(__name__)
 
@@ -59,13 +59,13 @@ def create_app():
             db.create_tables()
             logger.info(f'Database initialized: {settings.DATABASE_URL}')
 
-        # Initialize Victoria Metrics exporter if not already done
-        if victoria_metrics_exporter is None:
-            victoria_metrics_exporter = VictoriaMetricsExporter()
-            if victoria_metrics_exporter.enabled:
-                logger.info(f'Victoria Metrics integration enabled: {victoria_metrics_exporter.base_url}')
+        # Initialize Metrics exporter if not already done
+        if metrics_exporter is None:
+            metrics_exporter = MetricsExporter()
+            if metrics_exporter.enabled:
+                logger.info(f'Metrics integration is : {metrics_exporter.enabled}')
             else:
-                logger.info('Victoria Metrics integration is disabled')
+                logger.info(f'Metrics integration is : {metrics_exporter.enabled}')
     except Exception as e:
         logger.error(f'Error initializing application: {e}')
         raise
@@ -1159,20 +1159,7 @@ async def sync_data():
 
         session.commit()
         logger.debug(f'fun:sync_data:Background sync completed: {synced_count} synced, {failed_count} failed')
-        # Export metrics to Victoria Metrics if enabled
-        if victoria_metrics_exporter and victoria_metrics_exporter.enabled:
-            try:
-                # Get all topclients and topqueries from database
-                all_topclients = session.query(TopClient).all()
-                all_topqueries = session.query(TopQuery).all()
-                # Export to Victoria Metrics
-                victoria_metrics_exporter.export_metrics(
-                    topclients=all_topclients,
-                    topqueries=all_topqueries,
-                    agents_status=agents_status_list
-                )
-            except Exception as vm_error:
-                logger.error(f'fun:sync_data:Error exporting metrics to Victoria Metrics: {str(vm_error)}')
+
         sync_dynblock_rules_to_agents(session)
         return jsonify({"status": "success", "message": "Sync completed"})
 
@@ -1954,39 +1941,42 @@ def get_sync_status():
 
 
 @app.route('/metrics', methods=['GET'])
-@login_required
+# @login_required
 def get_metrics():
-    """Get Prometheus-formatted metrics for all agents"""
-    session = db.get_session()
-    try:
-        # Get all topclients, topqueries, and agent status
-        all_topclients = session.query(TopClient).all()
-        all_topqueries = session.query(TopQuery).all()
+    print(metrics_exporter.enabled)
 
-        agents = session.query(Agent).options(joinedload(Agent.group)).all()
-        agents_status_list = []
-        for agent in agents:
-            agents_status_list.append({
-                'agent_name': agent.agent_name,
-                'status': 'unknown' if agent.is_active else 'disabled',
-                'is_active': agent.is_active,
-                'group_name': agent.group.name if agent.group else None
-            })
+    if metrics_exporter.enabled:
+        session = db.get_session()
+        try:
+            # Get all topclients, topqueries, and agent status
+            all_topclients = session.query(TopClient).all()
+            all_topqueries = session.query(TopQuery).all()
 
-        if victoria_metrics_exporter:
-            metrics_text = victoria_metrics_exporter.get_prometheus_metrics(
+            agents = session.query(Agent).options(joinedload(Agent.group)).all()
+            agents_status_list = []
+            for agent in agents:
+                agents_status_list.append({
+                    'agent_name': agent.agent_name,
+                    'status': agent.status,
+                    'is_active': agent.is_active,
+                    'group_name': agent.group.name if agent.group else None,
+                    'version': agent.version if agent.version else None
+                })
+
+            metrics_text = metrics_exporter.get_prometheus_metrics(
                 topclients=all_topclients,
                 topqueries=all_topqueries,
                 agents_status=agents_status_list
             )
             return metrics_text, 200, {'Content-Type': 'text/plain; version=0.0.4'}
-        else:
-            return '# Victoria Metrics exporter not initialized\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
-    except Exception as e:
-        logger.error(f'fun:get_metrics:Error generating metrics: {str(e)}')
-        return f'# Error generating metrics: {str(e)}\n', 500, {'Content-Type': 'text/plain; version=0.0.4'}
-    finally:
-        session.close()
+
+        except Exception as e:
+            logger.error(f'fun:get_metrics:Error generating metrics: {str(e)}')
+            return f'# Error generating metrics: {str(e)}\n', 500, {'Content-Type': 'text/plain; version=0.0.4'}
+        finally:
+            session.close()
+    else:
+        return '# Metrics exporter not initialized\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
 
 
 @app.route('/api/backend-health', methods=['GET'])
@@ -2197,6 +2187,48 @@ def update_agent(agent_id):
         session.close()
 
 
+def delete_all_with_agent(model_class, agentname):
+
+    session = db.get_session()
+    model_name = model_class.__name__
+    if not model_class:
+        return jsonify({
+            'success': False,
+            'error': f'{model_class} not found'
+        }), 500
+    try:
+        current_acl = session.query(model_class).filter_by(agent_name=agentname).all()
+        if not current_acl:
+            return jsonify({
+                'success': True,
+                'error': f'{model_name} not found'
+            }), 200
+        count = 0
+        for i in current_acl:
+            session.delete(i)
+            count += 1
+        session.commit()
+        logger.debug(f'fun:delete_all_with_agent:Deleted all {model_name} for : {agentname} count: {count}')
+        log_audit(
+            action=f'Delete {model_name}',
+            details=f'Delete {model_name} for {agentname}'
+        )
+        return jsonify({
+            'success': True,
+            'message': f'All {model_name} deleted successfully'
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f'fun:delete_all_with_agent:Error deleting {model_name} for {agentname}: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        session.close()
+
+
 @app.route('/api/agents/<int:agent_id>', methods=['DELETE'])
 @login_required
 def delete_agent(agent_id):
@@ -2215,7 +2247,25 @@ def delete_agent(agent_id):
             details=f"Deleted agent '{agent_name}'"
         )
 
-        return jsonify({'success': True, 'message': 'Agent deleted successfully'})
+        response_rule, status_code_rule = delete_all_with_agent(Rule, agent_name)
+        response_ds, status_code_ds = delete_all_with_agent(DownstreamServer, agent_name)
+        response_acl, status_code_acl = delete_all_with_agent(ManagerList, agent_name)
+        response_tclients, status_code_tclients = delete_all_with_agent(TopClient, agent_name)
+        response_tqueryes, status_code_tqueryes = delete_all_with_agent(TopQuery, agent_name)
+
+        if all([
+            status_code_rule == 200,
+            status_code_acl == 200,
+            status_code_ds == 200,
+            status_code_tclients == 200,
+            status_code_tqueryes == 200
+        ]):
+            logger.debug(f'fun:delete_agent:Successfully deleting ALL for : {agent_name}')
+            return jsonify({'success': True, 'message': f'Successfully delete agent {agent_name}'}), 200
+        else:
+            logger.error(f'fun:delete_agent:Error deleting ALL rules: {agent_name}')
+            return jsonify({'success': False, 'message': f'Error deleted agent {agent_name}'}), 500
+
     except Exception as e:
         session.rollback()
         logger.error(f'fun:delete_agent:Error deleting agent: {str(e)}')
@@ -3630,7 +3680,7 @@ def delete_access_list_entry(entry_id):
 
 
 def main():
-    # Database and Victoria Metrics are already initialized in create_app()
+    # Database and Metrics are already initialized in create_app()
     logger.info(f'Starting Dnsdist Web Console on {settings.CONSOLE_HOST}:{settings.CONSOLE_PORT}')
     logger.info(f'Using database: {settings.DATABASE_URL}')
     logger.debug(f"Start with debug={settings.DEBUG}")

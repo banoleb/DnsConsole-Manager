@@ -49,7 +49,7 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 - ✅ Background sync of  showRules() and showServers() and etc.
 - ✅ Command autocomplete and history
 - ✅ Automatic rules synchronization to agents
-- ✅ Victoria Metrics integration for agent status, topClients, and topQueries metrics export
+- ✅ Metrics integration for agent status, topClients, and topQueries metrics export
 
 
 ![alt text][logo3]
@@ -239,10 +239,7 @@ sqlite3 app/dnsdist_webapi.db < db/seed_data.sqlite.sql
 
 #### Monitoring
 
-- `VICTORIA_METRICS_ENABLED` false
-- `VICTORIA_METRICS_HOST` - Victoria Metrics host (default: localhost)
-- `VICTORIA_METRICS_PORT` - Victoria Metrics port (default: 8428)
-- `VICTORIA_METRICS_URL` - Victoria Metrics URL path (default: /api/v1/import/prometheus)
+- `METRICS_ENABLED` false
 
 #### login (see .env)
 - `AUTH_ENABLED` - false

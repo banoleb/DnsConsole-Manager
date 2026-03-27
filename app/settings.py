@@ -92,11 +92,8 @@ class Settings:
     # Debug mode
     DEBUG = os.environ.get('DEBUG', 'false').lower() in ('true', '1', 'yes')
 
-    # Victoria Metrics settings
-    VICTORIA_METRICS_ENABLED = os.environ.get('VICTORIA_METRICS_ENABLED', 'false').lower() in ('true', '1', 'yes')
-    VICTORIA_METRICS_HOST = os.environ.get('VICTORIA_METRICS_HOST', '192.168.0.160')
-    VICTORIA_METRICS_PORT = int(os.environ.get('VICTORIA_METRICS_PORT', '8428'))
-    VICTORIA_METRICS_URL = os.environ.get('VICTORIA_METRICS_URL', '/api/v1/import/prometheus')
+    # Metrics settings
+    METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
     @classmethod
     def get_log_level(cls):
