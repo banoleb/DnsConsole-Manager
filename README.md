@@ -1,4 +1,4 @@
-# DnsConsole-Manager (beta v0.0.4)
+# DnsConsole-Manager (beta v0.0.5)
 
 ✨`I am actively developing the project and will be glad to receive any contribution.`
 
@@ -175,27 +175,6 @@ docker exec -it dist-manager bash
 cat /var/log/supervisor/web.error.log
 ```
 
-### Gunicorn
-**Additional Gunicorn options:**
-
-```bash
-# Bind to a specific host and port
-gunicorn --workers 4 --bind 127.0.0.1:5000 wsgi:app
-
-# Enable access logging
-gunicorn --workers 4 --bind 0.0.0.0:5000 --access-logfile - wsgi:app
-
-# Run as a daemon (background process)
-gunicorn --workers 4 --bind 0.0.0.0:5000 --daemon wsgi:app
-
-# Specify a PID file
-gunicorn --workers 4 --bind 0.0.0.0:5000 --pid /var/run/gunicorn.pid wsgi:app
-
-# Set worker timeout (useful for long-running commands)
-gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
-```
-
-
 #### 2. Access the web console in your browser:
    - Web Console: http://localhost:5000/
 
@@ -268,3 +247,8 @@ pytest test_console.py -v
 - Refactoring css
 - Many bugs and errors have been fixed
 - Quick links for commands and more
+#### BETA v0.0.5 28.03.2026
+- 🔥Implement SSL/TLS encryption for agent communication
+- Major liner refactoring for code maintainability
+- Remove Victoria Metrics integration, keep only URL metrics
+- Multiple improvements and optimizations

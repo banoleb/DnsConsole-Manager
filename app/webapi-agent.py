@@ -260,7 +260,7 @@ class APIHandler(BaseHTTPRequestHandler):
         if parsed_path.path == '/health':
             self._send_json_response(200, {
                 'status': 'ok',
-                'version': 'v0.0.4',
+                'version': 'v0.0.5',
                 'service_time': time_str
             })
             return
@@ -268,7 +268,7 @@ class APIHandler(BaseHTTPRequestHandler):
         # Info endpoint
         if parsed_path.path == '/api/v1/info':
             self._send_json_response(200, {
-                'version': 'v0.0.4',
+                'version': 'v0.0.5',
                 'service_time': time_str,
                 'endpoints': [
                     'POST /api/v1/command - Execute dnsdist CLI commands',

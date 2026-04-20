@@ -318,15 +318,34 @@
                                 <div v-if="rule.has_synced === 0">
                                   <button
                                     class="btn-small"
-                                    @click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">
-                                    Delete
+                                    @click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')"
+                                    :class="{ 'btn-loading': isActionsLocked }">
+                                    <span v-if="isActionsLocked" class="spinner"></span>
+                                    <span v-else>Delete</span>
                                   </button>
                                 </div>
-
+                                <div v-if="rule.rule_id !== 0">
+                                  <button
+                                    class="btn-small"
+                                    @click="sendCommand(agent, agent.originalIndex,'mvRuleToTop()')"
+                                    :class="{ 'btn-loading': isActionsLocked }">
+                                    <span v-if="isActionsLocked" class="spinner"></span>
+                                    <span v-else>ToTop</span>
+                                  </button>
+                                </div>
                                 <button
-                                  class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">
-                                  ToTop
+                                  @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\',\'' + (parseInt(rule.rule_id) - 1) + '\')')"
+                                  :class="{ 'btn-loading': isActionsLocked }"
+                                  class="btn-small">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Up</span>
+                                </button>
+                                <button
+                                  @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\',\'' + (parseInt(rule.rule_id) + 1) + '\')')"
+                                  :class="{ 'btn-loading': isActionsLocked }"
+                                  class="btn-small">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Down</span>
                                 </button>
                               </div>
                             </td>
@@ -390,13 +409,17 @@
                               <div class="buttons-tab-small">
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setAuto()')">
-                                  UP
+                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setAuto()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>UP</span>
                                 </button>
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setDown()')">
-                                  Down
+                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setDown()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Down</span>
                                 </button>
                               </div>
                             </td>
@@ -441,18 +464,25 @@
                               <div class="buttons-tab-small">
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">
-                                  DropAction
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>DropAction</span>
+                                </button>
+
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(100)</span>
                                 </button>
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">
-                                  QPSAction(100)
-                                </button>
-                                <button
-                                  class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' + client.client+ '\'}) mvRuleToTop()')">
-                                  QPSAction(1000)
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(1000)</span>
                                 </button>
                                 <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
                               </div>
@@ -496,18 +526,26 @@
                               <div class="buttons-tab-small">
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), DropAction(), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">
-                                  DropAction
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), DropAction(), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>DropAction</span>
                                 </button>
+
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(100), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">
-                                  QPSAction(100)
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(100), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(100)</span>
                                 </button>
+
                                 <button
                                   class="btn-small"
-                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(1000), {name=\'' + 'manual_' + query.query + '\'}) mvRuleToTop()')">
-                                  QPSAction(1000)
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(1000), {name=\'' + 'manual_' + query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(1000)</span>
                                 </button>
                                 <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
                               </div>

@@ -224,7 +224,6 @@ a:active {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
 }
 .login-card {
   background: var(--card-bg);
@@ -632,7 +631,30 @@ a:active {
   color: #fff;
 }
 
+.btn-loading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .command-output {
+  height: 200px;
   background-color: var(--output-bg);
   color: var(--text-color);
   padding: 1rem;

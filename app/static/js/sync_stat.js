@@ -6,6 +6,7 @@ Vue.createApp({
       syncStatusInterval: null,
       backendHealthInterval: null,
       authEnabled: false,
+      syncEnabled: false,
       showTooltip: true,
       syncStatus: {
         last_sync_time: null,
@@ -137,7 +138,7 @@ Vue.createApp({
     // Load theme preference
     this.loadTheme();
     console.log(
-      "%c DnsConsole-Manager (beta v0.0.4)! %c\n\n" +
+      "%c DnsConsole-Manager (beta v0.0.5)! %c\n\n" +
         "Does this page need fixes or improvements? Open an issue or contribute a merge request to help make the app better. https://github.com/banoleb/DnsConsole-Manager \n",
       "background: #42b983; color: white; font-size: 14px; padding: 4px 8px; border-radius: 4px;",
       "color: #42b983; font-size: 12px;",
@@ -149,6 +150,7 @@ Vue.createApp({
     // console.log('5.  authEnabled:', this.$el.dataset.authEnabled);
     // console.log('6. getAttribute:', this.$el.getAttribute('data-auth-enabled'));
     this.authEnabled = this.$el.dataset.authEnabled === "true";
+    this.syncEnabled = this.$el.dataset.syncEnabled === "true";
     // console.log('7.  authEnabled:', this.authEnabled);
     // Fetch backend health immediately and every 10 seconds
     this.fetchBackendHealth();

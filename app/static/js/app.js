@@ -3,6 +3,8 @@ const { createApp } = Vue;
 createApp({
   data() {
     return {
+      syncStatus: null,
+      lastSyncDate: null,
       agents: [],
       agentsRules: [],
       agentsServers: [],
@@ -19,7 +21,8 @@ createApp({
       broadcastOutput: "",
       broadcastTarget: "all",
       isRefreshing: false,
-      refreshIntervalTime: 10000,
+      isActionsLocked: false,
+      refreshIntervalTime: 3000,
       isOneAgentPage: false,
       modals: {
         help: false,
@@ -158,49 +161,56 @@ createApp({
       // window.location.href = `/agents/${this.agent.id}`;
     },
     async refreshAgents() {
+      const previousSyncDate = this.lastSyncDate;
+      await this.fetchSyncStatus();
+      const currentSyncDate = this.lastSyncDate;
       this.isRefreshing = true;
-      try {
-        const pathParts = window.location.pathname.split("/").filter(Boolean);
-        const isAgentDetail = pathParts[0] === "agents" && pathParts.length === 2 && /^\d+$/.test(pathParts[1]);
-        if (pathParts[1]) {
-          this.expandedAgents[0] = true;
-          this.expandedRules[0] = true;
-          this.expandedServers[0] = true;
-          this.expandedTopClients[0] = true;
-          this.expandedTopQueries[0] = true;
-          this.isOneAgentPage = true;
-          this.showActiveOnly = false;
-          this.refreshIntervalTime = 2000;
+      this.isActionsLocked = false;
+
+      if (previousSyncDate !== currentSyncDate) {
+        try {
+          const pathParts = window.location.pathname.split("/").filter(Boolean);
+          const isAgentDetail = pathParts[0] === "agents" && pathParts.length === 2 && /^\d+$/.test(pathParts[1]);
+          if (pathParts[1]) {
+            this.expandedAgents[0] = true;
+            this.expandedRules[0] = true;
+            this.expandedServers[0] = true;
+            this.expandedTopClients[0] = true;
+            this.expandedTopQueries[0] = true;
+            this.isOneAgentPage = true;
+            this.showActiveOnly = false;
+            this.refreshIntervalTime = 2000;
+          }
+          const url = isAgentDetail ? `/api/agents/${pathParts[1]}` : "/api/agents";
+
+          const response = await fetch(url);
+          const data = await response.json();
+          this.agents = data;
+          // Initialize expanded state for new agents
+          // this.agents.forEach((agent, index) => {
+          //     if (!(index in this.expandedAgents)) {
+          //         this.expandedAgents[index] = false;
+          //     }
+          // });
+
+          // Fetch rules for all agents
+          await this.fetchAgentsRules();
+
+          // Fetch servers for all agents
+          await this.fetchAgentsServers();
+
+          // Fetch top clients for all agents
+          await this.fetchAgentsTopClients();
+
+          // Fetch top queries for all agents
+          await this.fetchAgentsTopQueries();
+        } catch (error) {
+          console.error("Error loading agents:", error);
+        } finally {
+          setTimeout(() => {
+            this.isRefreshing = false;
+          });
         }
-        const url = isAgentDetail ? `/api/agents/${pathParts[1]}` : "/api/agents";
-
-        const response = await fetch(url);
-        const data = await response.json();
-        this.agents = data;
-        // Initialize expanded state for new agents
-        // this.agents.forEach((agent, index) => {
-        //     if (!(index in this.expandedAgents)) {
-        //         this.expandedAgents[index] = false;
-        //     }
-        // });
-
-        // Fetch rules for all agents
-        await this.fetchAgentsRules();
-
-        // Fetch servers for all agents
-        await this.fetchAgentsServers();
-
-        // Fetch top clients for all agents
-        await this.fetchAgentsTopClients();
-
-        // Fetch top queries for all agents
-        await this.fetchAgentsTopQueries();
-      } catch (error) {
-        console.error("Error loading agents:", error);
-      } finally {
-        setTimeout(() => {
-          this.isRefreshing = false;
-        });
       }
     },
     async fetchAgentsRules() {
@@ -212,6 +222,18 @@ createApp({
         }
       } catch (error) {
         console.error("Error loading agents rules:", error);
+      }
+    },
+    async fetchSyncStatus() {
+      try {
+        const response = await fetch("/api/sync-status");
+        const data = await response.json();
+        if (data.success && data.sync_status) {
+          this.syncStatus = data.sync_status;
+          this.lastSyncDate = data.sync_status.last_sync_date;
+        }
+      } catch (error) {
+        console.error("Error loading sync status:", error);
       }
     },
     async fetchAgentsServers() {
@@ -340,7 +362,7 @@ createApp({
           html += `<div style="margin-bottom: 15px; padding-bottom: 15px; ${isLastItem ? "" : "border-bottom: 1px solid #444;"}">`;
           html += `<div style="color: ${statusColor}; font-weight: bold;">${statusIcon} ${this.escapeHtml(result.agent_name)}</div>`;
           html += `<div font-weight: bold;">Command: ${command}</div>`;
-          console.log(result.result);
+          // console.log(result.result);
           if (result.success) {
             // Check if this is showRules() with parsed data
             if (result.parsed_rules && Array.isArray(result.parsed_rules)) {
@@ -435,8 +457,13 @@ createApp({
         alert("Please enter a command");
         return;
       }
-
+      if (this.isActionsLocked) {
+        // console.log('Actions locked, waiting for next sync...');
+        this.agentOutputs[index] = "Actions locked, waiting for sync...";
+        return;
+      }
       this.agentOutputs[index] = "Executing command...";
+      this.isActionsLocked = true;
 
       try {
         const response = await fetch("/api/command", {
