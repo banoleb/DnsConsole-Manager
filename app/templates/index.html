@@ -1,507 +1,572 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     {% include 'components/head.html' %}
-</head>
-<body>
+  </head>
+  <body>
     <!-- Navbar -->
-    <div id="app2" >
-        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}" >
-            {% include 'components/navbar.html' %}
-        </nav>
+    <div id="app2">
+      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
-    <div ></div>
+    <div></div>
     <div id="app">
-        <!-- Main Container -->
-        <div class="container">
-            <!-- Broadcast Command Section -->
-                <div  v-if="!isOneAgentPage" class="card">
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="form-label">Broadcast Command to Agents</label>
-                        <div class="command-cloud">
-                            <button class="btn-command show" @click="sendBroadcastCommand('manager:show_all()')">
-                                manager:show_all()
-                            </button>
-                            <button class="btn-command show" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">
-                                showRules()
-                            </button>
+      <!-- Main Container -->
+      <div class="container">
+        <!-- Broadcast Command Section -->
+        <div v-if="!isOneAgentPage" class="card">
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Broadcast Command to Agents</label>
+              <div class="command-cloud">
+                <button class="btn-command show" @click="sendBroadcastCommand('manager:show_all()')">
+                  manager:show_all()
+                </button>
+                <button class="btn-command show" @click="sendBroadcastCommand('showRules({showUUIDs=true})')">
+                  showRules()
+                </button>
 
-                            <button class="btn-command show" @click="sendBroadcastCommand('showPools()')">
-                                showPools()
-                            </button>
-                            
-                            <button class="btn-command show" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">
-                                showServers()
-                            </button>
-                            
-                            <button class="btn-command top" @click="sendBroadcastCommand('topClients()')">
-                                topClients()
-                            </button>
-                            
-                            <button class="btn-command top" @click="sendBroadcastCommand('topResponses(10)')">
-                                topResponses(10)
-                            </button>
-                            
-                            <button class="btn-command dump" @click="sendBroadcastCommand('dumpStats()')">
-                                dumpStats()
-                            </button>
-                        </div>
-                        <table border="0" cellpadding="8" cellspacing="0" style="width:100%; padding-top: 10px;">
-                            <tr>
-                                <td style="width: 300px;">
-                                    <select class="form-control" v-model="broadcastTarget">
-                                        <option value="all">All Agents</option>
-                                        <option value="none">Agents Without Group</option>
-                                        <option
-                                            v-for="group in groups"
-                                            :key="group.id"
-                                            :value="group.id"
-                                        >
-                                            {{ group.name }}
-                                        </option>
-                                    </select>
-                                    <small class="text-muted">Select target group for agents</small>
-                                </td>
-                                <td>
-                                    <div class="autocomplete-container">
-                                        <div class="input-group">
-                                            <input
-                                                type="text"
-                                                class="form-control"
-                                                v-model="broadcastCommand"
-                                                @input="onBroadcastCommandInput"
-                                                @keydown="handleAutocompleteKeydown($event, 'broadcast')"
-                                                @blur="hideAutocomplete('broadcast')"
-                                                @keyup.enter="handleBroadcastEnter"
-                                                placeholder="Enter dnsdist command (e.g., showServers())"
-                                            />
-                                            <button class="btn" @click="sendBroadcastCommand(broadcastCommand)">
-                                                ⏩ Execute
-                                            </button>
-                                        </div>
-                                        <div v-if="autocomplete.showBroadcast && autocomplete.suggestions.length > 0" class="autocomplete-dropdown">
-                                            <div
-                                                v-for="(suggestion, idx) in autocomplete.suggestions"
-                                                :key="idx"
-                                                :class="['autocomplete-item', { 'selected': idx === autocomplete.selectedIndex }]"
-                                                @mousedown.prevent="selectSuggestion(suggestion, 'broadcast')"
-                                            >
-                                                {{ suggestion }}
-                                            </div>
-                                        </div>
-                                        <small class="text-muted">Press Enter to execute (or choose from autocomplete suggestions) and arrow keys to select</small>
-                                    </div>
+                <button class="btn-command show" @click="sendBroadcastCommand('showPools()')">showPools()</button>
 
-                                </td>
-                            </tr>
-                        </table>
-                        <div v-if="broadcastOutput" class="mb-3">
-                            <label class="form-label">Output</label>
-                            <div class="command-output" v-html="broadcastOutput"></div>
+                <button class="btn-command show" @click="sendBroadcastCommand('showServers({showUUIDs=true})')">
+                  showServers()
+                </button>
+
+                <button class="btn-command top" @click="sendBroadcastCommand('topClients()')">topClients()</button>
+
+                <button class="btn-command top" @click="sendBroadcastCommand('topResponses(10)')">
+                  topResponses(10)
+                </button>
+
+                <button class="btn-command dump" @click="sendBroadcastCommand('dumpStats()')">dumpStats()</button>
+              </div>
+              <table border="0" cellpadding="8" cellspacing="0" style="width: 100%; padding-top: 10px">
+                <tr>
+                  <td style="width: 300px">
+                    <select class="form-control" v-model="broadcastTarget">
+                      <option value="all">All Agents</option>
+                      <option value="none">Agents Without Group</option>
+                      <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+                    </select>
+                    <small class="text-muted">Select target group for agents</small>
+                  </td>
+                  <td>
+                    <div class="autocomplete-container">
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          class="form-control"
+                          v-model="broadcastCommand"
+                          @input="onBroadcastCommandInput"
+                          @keydown="handleAutocompleteKeydown($event, 'broadcast')"
+                          @blur="hideAutocomplete('broadcast')"
+                          @keyup.enter="handleBroadcastEnter"
+                          placeholder="Enter dnsdist command (e.g., showServers())" />
+                        <button class="btn" @click="sendBroadcastCommand(broadcastCommand)">⏩ Execute</button>
+                      </div>
+                      <div
+                        v-if="autocomplete.showBroadcast && autocomplete.suggestions.length > 0"
+                        class="autocomplete-dropdown">
+                        <div
+                          v-for="(suggestion, idx) in autocomplete.suggestions"
+                          :key="idx"
+                          :class="['autocomplete-item', { 'selected': idx === autocomplete.selectedIndex }]"
+                          @mousedown.prevent="selectSuggestion(suggestion, 'broadcast')">
+                          {{ suggestion }}
                         </div>
+                      </div>
+                      <small class="text-muted">
+                        Press Enter to execute (or choose from autocomplete suggestions) and arrow keys to select
+                      </small>
                     </div>
-                </div>
+                  </td>
+                </tr>
+              </table>
+              <div v-if="broadcastOutput" class="mb-3">
+                <label class="form-label">Output</label>
+                <div class="command-output" v-html="broadcastOutput"></div>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Container -->
+      <div class="container" style="padding-top: 0px">
+        <div class="card">
+          <div class="navbar-buttons" style="border-bottom: 1px solid var(--border-color)">
+            <div v-if="isOneAgentPage">
+              <button class="btn btn-sm" @click="AhrefgoToAgents">Show All Agents</button>
+            </div>
+            <button class="btn btn-sm" @click="showAgentsModal">Configure AGENTS</button>
+            <button class="btn btn-sm" @click="showHelpModal">Help</button>
+            <button class="btn btn-sm" @click="showHistoryModal">History</button>
+            <div v-if="!isOneAgentPage">
+              <select v-model="selectedGroupFilter" class="form-control" style="height: -webkit-fill-available">
+                <option value="all">All Agents</option>
+                <option value="none">No Group</option>
+                <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+              </select>
+            </div>
+            <div v-if="!isOneAgentPage" style="align-content: center">
+              <label
+                class="form-check-label"
+                style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding-left: 10px">
+                <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
+                Enable Agents only
+              </label>
+            </div>
+          </div>
         </div>
 
-        <!-- Main Container -->
-        <div class="container" style="padding-top: 0px;">
-            <div class="card">
-                <div class="navbar-buttons" style="border-bottom: 1px solid var(--border-color);">
-                    <div  v-if="isOneAgentPage">
-                        <button class="btn btn-sm"   @click="AhrefgoToAgents">Show All Agents</button>
-                   
-    
-                    </div>
-                    <button class="btn btn-sm" @click="showAgentsModal">Configure AGENTS</button>
-                    <button class="btn btn-sm" @click="showHelpModal">Help</button>
-                    <button class="btn btn-sm" @click="showHistoryModal">History</button>
-                    <div  v-if="!isOneAgentPage">
-                    <select v-model="selectedGroupFilter" class="form-control" style="height: -webkit-fill-available;">
-                        <option value="all">All Agents</option>
-                        <option value="none">No Group</option>
-                        <option v-for="group in groups" :key="group.id" :value="group.id">
-                            {{ group.name }}
-                        </option>
-                    </select>
+        <div v-if="agents.length === 0" class="alert alert-info">No agents configured</div>
+
+        <div v-else-if="filteredAgentsWithIndex.length === 0" class="alert alert-info">
+          No agents found for the selected filter
+        </div>
+
+        <div v-for="agent in filteredAgentsWithIndex" :key="agent.id ?? agent.originalIndex" class="agent-card">
+          <div class="stat-card-agent">
+            <div class="card-header agent-header" @click="toggleAgent(agent.originalIndex)">
+              <div class="agent-info">
+                <div class="agent-name">
+                  <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
+                  {{ agent.name }}
+
+                  <span v-if="isOneAgentPage" class="badge badge-secondary-one">
+                    Selected: {{ agent.name }} 🔥 FASTER DATA UPDATES 🔥
+                  </span>
+
+                  <span v-if="!isOneAgentPage" class="badge badge-secondary-secondary">
+                    <a :href="'/agents/' + agent.id" style="font-weight: 600">Use this agent</a>
+                  </span>
                 </div>
-                    <div v-if="!isOneAgentPage"  style="align-content: center;" >
-                    <label class="form-check-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding-left: 10px">
-                        <input type="checkbox" class="form-check-input" v-model="showActiveOnly" />
-                        Enable Agents only
-                    </label>
-                </div>
-                </div>
-            </div>
+                <div class="agent-url">{{ agent.url }}</div>
+                <div class="agent-rules-info">📋 {{ getRulesCount(agent.id) }} rules configured</div>
+                <div class="agent-servers-info">🖥️ {{ getServersCount(agent.id) }} downstream servers</div>
+                <div class="agent-servers-info">👥 {{ getTopClientsCount(agent.id) }} top clients</div>
+                <div class="agent-servers-info">🔍 {{ getTopQueriesCount(agent.id) }} top queries</div>
+              </div>
+              <div class="agent-status">
+                <span class="toggle-label">Last sync: {{ agent.service_time }}</span>
+                <span v-if="agent.group_name" class="badge badge-group">{{ agent.group_name }}</span>
 
-            <div v-if="agents.length === 0" class="alert alert-info">
-                No agents configured
-            </div>
-
-            <div v-else-if="filteredAgentsWithIndex.length === 0" class="alert alert-info">
-                No agents found for the selected filter
-            </div>
-
-            <div v-for="agent in filteredAgentsWithIndex" :key="agent.id ?? agent.originalIndex" class="agent-card">
-                <div class="stat-card-agent">
-                    <div class="card-header agent-header" @click="toggleAgent(agent.originalIndex)">
-                        <div class="agent-info">
-                            <div class="agent-name">
-                                <span :class="getStatusClass(agent.status)">{{ getStatusIcon(agent.status) }}</span>
-                                {{ agent.name }}
-
-                                <span v-if="isOneAgentPage" class="badge badge-secondary-one">
-                                    Selected: {{ agent.name }}  🔥 FASTER DATA UPDATES 🔥
-                                </span>
-
-
-                               <span v-if="!isOneAgentPage" class="badge badge-secondary-secondary "> <a :href="'/agents/' + agent.id" style="font-weight:600;">Use this agent</a></span>
-
-
-                            </div>
-                            <div class="agent-url">{{ agent.url }}</div>
-                            <div class="agent-rules-info">
-                                📋 {{ getRulesCount(agent.id) }} rules configured
-                            </div>
-                            <div class="agent-servers-info">
-                                🖥️ {{ getServersCount(agent.id) }} downstream servers
-                            </div>
-                            <div class="agent-servers-info">
-                                👥 {{ getTopClientsCount(agent.id) }} top clients
-                            </div>
-                            <div class="agent-servers-info">
-                                🔍 {{ getTopQueriesCount(agent.id) }} top queries
-                            </div>
-                        </div>
-                        <div class="agent-status">
-
-                            <span class="toggle-label">Last sync: {{ agent.service_time }}</span>
-                            <span v-if="agent.group_name" class="badge badge-group">
-                                {{ agent.group_name }}
-                            </span>
-                           
-                            <span 
-                            class="badge" 
-                            :class="{
+                <span
+                  class="badge"
+                  :class="{
                                 'badge-success': agent.status === 'online',
                                 'badge-secondary': agent.status === 'offline',
                                 'badge-disabled': agent.status === 'disabled'
-                            }"
-                        >
-                            {{ agent.status }}
-                        </span>
-                            <span v-if="agent.version" class="badge badge-info">v{{ agent.version }}</span>
-                            <label class="toggle-switch" @click.stop>
-                                <input
-                                    type="checkbox"
-                                    :checked="agent.is_active"
-                                    @change="toggleAgentStatus(agent, $event)"
-                                />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span class="toggle-label">{{ agent.is_active ? 'Enabled' : 'Disabled' }}</span>
-                        </div>
-                    </div>
-                    <transition name="collapse">
-                        <div v-if="expandedAgents[agent.originalIndex]" class="card-body">
-                                <div class="mb-3">
-  
-                                <div class="command-cloud">
-                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'manager:show_all()')">
-                                        manager:show_all()
-                                    </button>
-                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">
-                                        showRules()
-                                    </button>
-                                    
-                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showPools()')">
-                                        showPools()
-                                    </button>
-                                    
-                                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">
-                                        showServers()
-                                    </button>
-                                    
-                                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topClients()')">
-                                        topClients()
-                                    </button>
-                                    
-                                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
-                                        topResponses(10)
-                                    </button>
-                                    
-                                    <button class="btn-command dump" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
-                                        dumpStats()
-                                    </button>
-                                </div>
-                                    <div style="padding-top: 10px;">
-                                    <div class="autocomplete-container">
-                                        <div class="input-group">
-                                            <input
-                                                type="text"
-                                                class="form-control"
-                                                v-model="agentCommands[agent.originalIndex]"
-                                                @input="onAgentCommandInput(agent.originalIndex)"
-                                                @keydown="handleAutocompleteKeydown($event, 'agent', agent.originalIndex)"
-                                                @blur="hideAutocomplete('agent', agent.originalIndex)"
-                                                @keyup.enter="handleAgentEnter(agent, agent.originalIndex)"
-                                                placeholder="Enter dnsdist command (e.g., showServers())"
-                                            />
-                                            <button class="btn" @click="sendCommand(agent, agent.originalIndex, agentCommands[agent.originalIndex])">
-                                                ⏩ Execute
-                                            </button>
-                                        </div>
-                                        <div v-if="autocomplete.showAgent[agent.originalIndex] && autocomplete.suggestions.length > 0" class="autocomplete-dropdown">
-                                            <div
-                                                v-for="(suggestion, idx) in autocomplete.suggestions"
-                                                :key="idx"
-                                                :class="['autocomplete-item', { 'selected': idx === autocomplete.selectedIndex }]"
-                                                @mousedown.prevent="selectSuggestion(suggestion, 'agent', agent.originalIndex)"
-                                            >
-                                                {{ suggestion }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                    <small class="text-muted">Press Enter to execute (or choose from autocomplete suggestions) and arrow keys to select</small>
-
-                                </div>
-
-                                <div v-if="agentOutputs[agent.originalIndex]" class="mb-3">
-                                    <label class="form-label">Output</label>
-                                    <div class="command-output" v-html="agentOutputs[agent.originalIndex]"></div>
-                                </div>
-                                <div v-if="agent.status === 'online'">
-
-                                </div>
-                                <div v-else class="alert alert-warning">
-                                    Agent is {{ agent.status }}. Cannot send commands. information may be out of date
-                                </div>
-                                <!-- Rules Section -->
-                                <div  class="rules-section">
-                                    <div class="rules-toggle" @click="toggleRules(agent.originalIndex)">
-                                        <div>
-                                            <strong>📋 Rules ({{ getRulesCount(agent.id) }})</strong>
-                                        </div>
-                                        <span class="rules-toggle-icon" :class="{ 'expanded': expandedRules[agent.originalIndex] }">▶</span>
-                                    </div>
-                                    <transition name="collapse">
-                                        <div v-if="expandedRules[agent.originalIndex]" class="rules-table-container">
-                                            <table class="rules-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th style="width: 2%;">ID</th>
-                                                        <th style="width: 11%;">Name</th>
-                                                        <th style="width: 17%;">UUID</th>
-                                                        <th style="width: 5%;">
-                                                        <div class="tooltip-container">
-                                                            <span class="help-icon">?</span>
-                                                            <span class="tooltip-text">Rules from the Web-Console-Manager - from rules tab</span>
-                                                            Synced
-                                                        </div>
-                                                        </th>
-                                                        <th style="width: 5%;">C. Order</th>
-                                                        <th style="width: 5%;">Matches</th>
-                                                        <th style="width: 23%;">Rule</th>
-                                                        <th style="width: 18%;">Action</th>
-                                                        <th style="width: 14%;">
-                                                            <div class="tooltip-container">
-                                                                <span class="help-icon">?</span>
-                                                                <span class="tooltip-text">Send a command to the agent. The rules are updated automatically within 10 seconds.</span>
-                                                                Comand
-                                                            </div>
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    topo-dynblock-chip
-
-                                                    
-                                                    <tr v-for="rule in getRules(agent.id)" :key="rule.id" :class="{ 'topo-dynblock-chip': rule.has_synced === 1 }">
-                                                        <td>{{ rule.rule_id }}</td>
-                                                        <td><span v-if="rule.has_synced === 1" >🛡️</span>{{ rule.name || '-' }}
-                                                        </td>
-
-                                                        <td><a :href="'/rules/' + rule.uuid" >{{ rule.uuid || '-' }}</a></td>
-                                                        <td ><span v-if="rule.has_synced === 1" class="badge badge-synced"> <a :href="'/dynblock-rules/' + rule.uuid" >Link</a></span>
-                                                        <span v-else>-</span>
-                                                        </td>
-                                                        <td>{{ rule.creation_order || '-' }}</td>
-                                                        <td>{{ rule.matches }}</td>
-                                                        <!-- <code>{{ truncate(rule.rule, 40) }}</code> -->
-                                                        <td> <code>{{ rule.rule.length > 40 ? rule.rule.substring(0, 40) + '...' : rule.rule }}</code></td>
-                                                        <td><code>{{ rule.action }}</code></td>
-                                                        <td>
-                                                            <div class="buttons-tab-small">
-                                                                        <div  v-if="rule.has_synced === 0" >
-                                                                            <button class="btn-small"@click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')">Delete</button></div>
-
-                                                                    <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\', 0)')">ToTop</button>
-                                                                </div>
-                                                    </td>
-
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </transition>
-                                </div>
-
-                                <!-- Servers Section -->
-                                <div  class="rules-section">
-                                    <div class="rules-toggle" @click="toggleServers(agent.originalIndex)">
-                                        <div>
-                                            <strong>🖥️ Downstream Servers ({{ getServersCount(agent.id) }})</strong>
-                                        </div>
-                                        <span class="rules-toggle-icon" :class="{ 'expanded': expandedServers[agent.originalIndex] }">▶</span>
-                                    </div>
-                                    <transition name="collapse">
-                                        <div v-if="expandedServers[agent.originalIndex]" class="rules-table-container">
-                                            <table class="rules-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th style="width: 4%;">ID</th>
-                                                        <th style="width: 12%;">Name</th>
-                                                        <th style="width: 11%;">Address</th>
-                                                        <th style="width: 6%;">State</th>
-                                                        <th style="width: 6%;">QPS</th>
-                                                        <th style="width: 6%;">Queries</th>
-                                                        <th style="width: 6%;">Drops</th>
-                                                        <th style="width: 6%;">Drate</th>
-                                                        <th style="width: 6%;">Lat</th>
-                                                        <th style="width: 3%;">TCP</th>
-                                                        <th style="width: 6%;">Out</th>
-                                                        <th style="width: 18%;">Pools</th>
-                                                        <th style="width: 10%;">Comand</th>
-
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr v-for="server in getServers(agent.id)" :key="server.id">
-                                                        <td>{{ server.server_id }}</td>
-                                                        <td>{{ server.name }}</td>
-                                                        <td><code>{{ server.address }}</code></td>
-                                                        <td>
-                                                            <span :class="server.state.toLowerCase() === 'up' ? 'badge badge-success' : 'badge badge-danger'">{{ server.state }}</span>
-                                                        </td>
-                                                        <td>{{ server.qps }}</td>
-                                                        <td>{{ server.queries }}</td>
-                                                        <td>{{ server.drops }}</td>
-                                                        <td>{{ server.drate }}</td>
-                                                        <td>{{ server.lat }}</td>
-                                                        <td>{{ server.tcp }}</td>
-                                                        <td>{{ server.outstanding }}</td>
-                                                        <td><code>{{ server.pools }}</code></td>
-                                                        <td>
-                                                            <div class="buttons-tab-small">
-                                                            <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setAuto()')">UP</button>
-                                                       <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setDown()')">Down</button>
-                                                        </div>
-                                                        </td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </transition>
-                                </div>
-
-                                <!-- Top Clients Section -->
-                                <div class="rules-section">
-                                    <div class="rules-toggle" @click="toggleTopClients(agent.originalIndex)">
-                                        <div>
-                                            <strong>👥 Top Clients ({{ getTopClientsCount(agent.id) }})</strong>
-                                        </div>
-                                        <span class="rules-toggle-icon" :class="{ 'expanded': expandedTopClients[agent.originalIndex] }">▶</span>
-                                    </div>
-                                    <transition name="collapse">
-                                        <div v-if="expandedTopClients[agent.originalIndex]" class="rules-table-container">
-                                            <table class="rules-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th style="width: 10%;">Rank</th>
-                                                        <th style="width: 30%;">Client</th>
-                                                      
-                                                        <th style="width: 20%;">Queries</th>
-                                                        <th style="width: 20%;">Percentage</th>
-                                                        <th style="width: 20%;">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr v-for="client in getTopClients(agent.id)" :key="client.id">
-                                                        <td>{{ client.rank }}</td>
-                                                        <td><code>{{ client.client }}</code></td>
-
-                                                        <td>{{ client.queries }}</td>
-                                                        <td>{{ client.percentage }}</td>
-                                                        <td>
-                                                            <div class="buttons-tab-small">
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">DropAction</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')">QPSAction(100)</button>
-                                                        <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' + client.client+ '\'}) mvRuleToTop()')">QPSAction(1000)</button>
-                                                        <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
-                                                    </div></td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </transition>
-                                </div>
-
-                                <!-- Top Queries Section -->
-                                <div  class="rules-section">
-                                    <div class="rules-toggle" @click="toggleTopQueries(agent.originalIndex)">
-                                        <div>
-                                            <strong>🔍 Top Queries ({{ getTopQueriesCount(agent.id) }})</strong>
-                                        </div>
-                                        <span class="rules-toggle-icon" :class="{ 'expanded': expandedTopQueries[agent.originalIndex] }">▶</span>
-                                    </div>
-                                    <transition name="collapse">
-                                        <div v-if="expandedTopQueries[agent.originalIndex]" class="rules-table-container">
-                                            <table class="rules-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th style="width: 10%;">Rank</th>
-                                                        <th style="width: 30%;">Query</th>
-                                                        <th style="width: 20%;">Count</th>
-                                                        <th style="width: 20%;">Percentage</th>
-                                                        <th style="width: 20%;">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr v-for="query in getTopQueries(agent.id)" :key="query.id">
-                                                        <td>{{ query.rank }}</td>
-                                                        <td><code>{{ query.query }}</code></td>
-                                                        <td>{{ query.count }}</td>
-                                                        <td>{{ query.percentage }}</td>
-                                                        <td>
-                                                            <div class="buttons-tab-small">
-                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), DropAction(), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">DropAction</button>
-                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(100), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')">QPSAction(100)</button>
-                                                                <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(1000), {name=\'' + 'manual_' + query.query + '\'}) mvRuleToTop()')">QPSAction(1000)</button>
-                                                                <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </transition>
-                                </div>
-                        </div>
-                    </transition>
-                </div>
+                            }">
+                  {{ agent.status }}
+                </span>
+                <span v-if="agent.version" class="badge badge-info">v{{ agent.version }}</span>
+                <label class="toggle-switch" @click.stop>
+                  <input type="checkbox" :checked="agent.is_active" @change="toggleAgentStatus(agent, $event)" />
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">{{ agent.is_active ? 'Enabled' : 'Disabled' }}</span>
+              </div>
             </div>
+            <transition name="collapse">
+              <div v-if="expandedAgents[agent.originalIndex]" class="card-body">
+                <div class="mb-3">
+                  <div class="command-cloud">
+                    <button
+                      class="btn-command show"
+                      @click="sendCommand(agent, agent.originalIndex,'manager:show_all()')">
+                      manager:show_all()
+                    </button>
+                    <button
+                      class="btn-command show"
+                      @click="sendCommand(agent, agent.originalIndex,'showRules({showUUIDs=true})')">
+                      showRules()
+                    </button>
+
+                    <button class="btn-command show" @click="sendCommand(agent, agent.originalIndex,'showPools()')">
+                      showPools()
+                    </button>
+
+                    <button
+                      class="btn-command show"
+                      @click="sendCommand(agent, agent.originalIndex,'showServers({showUUIDs=true})')">
+                      showServers()
+                    </button>
+
+                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topClients()')">
+                      topClients()
+                    </button>
+
+                    <button class="btn-command top" @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
+                      topResponses(10)
+                    </button>
+
+                    <button
+                      class="btn-command dump"
+                      @click="sendCommand(agent, agent.originalIndex,'topResponses(10)')">
+                      dumpStats()
+                    </button>
+                  </div>
+                  <div style="padding-top: 10px">
+                    <div class="autocomplete-container">
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          class="form-control"
+                          v-model="agentCommands[agent.originalIndex]"
+                          @input="onAgentCommandInput(agent.originalIndex)"
+                          @keydown="handleAutocompleteKeydown($event, 'agent', agent.originalIndex)"
+                          @blur="hideAutocomplete('agent', agent.originalIndex)"
+                          @keyup.enter="handleAgentEnter(agent, agent.originalIndex)"
+                          placeholder="Enter dnsdist command (e.g., showServers())" />
+                        <button
+                          class="btn"
+                          @click="sendCommand(agent, agent.originalIndex, agentCommands[agent.originalIndex])">
+                          ⏩ Execute
+                        </button>
+                      </div>
+                      <div
+                        v-if="autocomplete.showAgent[agent.originalIndex] && autocomplete.suggestions.length > 0"
+                        class="autocomplete-dropdown">
+                        <div
+                          v-for="(suggestion, idx) in autocomplete.suggestions"
+                          :key="idx"
+                          :class="['autocomplete-item', { 'selected': idx === autocomplete.selectedIndex }]"
+                          @mousedown.prevent="selectSuggestion(suggestion, 'agent', agent.originalIndex)">
+                          {{ suggestion }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <small class="text-muted">
+                    Press Enter to execute (or choose from autocomplete suggestions) and arrow keys to select
+                  </small>
+                </div>
+
+                <div v-if="agentOutputs[agent.originalIndex]" class="mb-3">
+                  <label class="form-label">Output</label>
+                  <div class="command-output" v-html="agentOutputs[agent.originalIndex]"></div>
+                </div>
+                <div v-if="agent.status === 'online'"></div>
+                <div v-else class="alert alert-warning">
+                  Agent is {{ agent.status }}. Cannot send commands. information may be out of date
+                </div>
+                <!-- Rules Section -->
+                <div class="rules-section">
+                  <div class="rules-toggle" @click="toggleRules(agent.originalIndex)">
+                    <div>
+                      <strong>📋 Rules ({{ getRulesCount(agent.id) }})</strong>
+                    </div>
+                    <span class="rules-toggle-icon" :class="{ 'expanded': expandedRules[agent.originalIndex] }">▶</span>
+                  </div>
+                  <transition name="collapse">
+                    <div v-if="expandedRules[agent.originalIndex]" class="rules-table-container">
+                      <table class="rules-table">
+                        <thead>
+                          <tr>
+                            <th style="width: 2%">ID</th>
+                            <th style="width: 11%">Name</th>
+                            <th style="width: 17%">UUID</th>
+                            <th style="width: 5%">
+                              <div class="tooltip-container">
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-text">Rules from the Web-Console-Manager - from rules tab</span>
+                                Synced
+                              </div>
+                            </th>
+                            <th style="width: 5%">C. Order</th>
+                            <th style="width: 5%">Matches</th>
+                            <th style="width: 23%">Rule</th>
+                            <th style="width: 18%">Action</th>
+                            <th style="width: 14%">
+                              <div class="tooltip-container">
+                                <span class="help-icon">?</span>
+                                <span class="tooltip-text">
+                                  Send a command to the agent. The rules are updated automatically within 10 seconds.
+                                </span>
+                                Comand
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="rule in getRules(agent.id)"
+                            :key="rule.id"
+                            :class="{ 'topo-dynblock-chip': rule.has_synced === 1 }">
+                            <td>{{ rule.rule_id }}</td>
+                            <td>
+                              <span v-if="rule.has_synced === 1">🛡️</span>
+                              {{ rule.name || '-' }}
+                            </td>
+                            <td>
+                              <a :href="'/rules/' + rule.uuid">{{ rule.uuid || '-' }}</a>
+                            </td>
+                            <td>
+                              <span v-if="rule.has_synced === 1" class="badge badge-synced">
+                                <a :href="'/dynblock-rules/' + rule.uuid">Link</a>
+                              </span>
+                              <span v-else>-</span>
+                            </td>
+                            <td>{{ rule.creation_order || '-' }}</td>
+                            <td>{{ rule.matches }}</td>
+                            <td>
+                              <code>{{ rule.rule.length > 40 ? rule.rule.substring(0, 40) + '...' : rule.rule }}</code>
+                            </td>
+                            <td><code>{{ rule.action }}</code></td>
+                            <td>
+                              <div class="buttons-tab-small">
+                                <div v-if="rule.has_synced === 0">
+                                  <button
+                                    class="btn-small"
+                                    @click="sendCommand(agent, agent.originalIndex,'rmRule(\'' + rule.uuid + '\')')"
+                                    :class="{ 'btn-loading': isActionsLocked }">
+                                    <span v-if="isActionsLocked" class="spinner"></span>
+                                    <span v-else>Delete</span>
+                                  </button>
+                                </div>
+                                <div v-if="rule.rule_id !== 0">
+                                  <button
+                                    class="btn-small"
+                                    @click="sendCommand(agent, agent.originalIndex,'mvRuleToTop()')"
+                                    :class="{ 'btn-loading': isActionsLocked }">
+                                    <span v-if="isActionsLocked" class="spinner"></span>
+                                    <span v-else>ToTop</span>
+                                  </button>
+                                </div>
+                                <button
+                                  @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\',\'' + (parseInt(rule.rule_id) - 1) + '\')')"
+                                  :class="{ 'btn-loading': isActionsLocked }"
+                                  class="btn-small">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Up</span>
+                                </button>
+                                <button
+                                  @click="sendCommand(agent, agent.originalIndex,'mvRule(\'' + rule.rule_id + '\',\'' + (parseInt(rule.rule_id) + 1) + '\')')"
+                                  :class="{ 'btn-loading': isActionsLocked }"
+                                  class="btn-small">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Down</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </transition>
+                </div>
+
+                <!-- Servers Section -->
+                <div class="rules-section">
+                  <div class="rules-toggle" @click="toggleServers(agent.originalIndex)">
+                    <div>
+                      <strong>🖥️ Downstream Servers ({{ getServersCount(agent.id) }})</strong>
+                    </div>
+                    <span class="rules-toggle-icon" :class="{ 'expanded': expandedServers[agent.originalIndex] }">
+                      ▶
+                    </span>
+                  </div>
+                  <transition name="collapse">
+                    <div v-if="expandedServers[agent.originalIndex]" class="rules-table-container">
+                      <table class="rules-table">
+                        <thead>
+                          <tr>
+                            <th style="width: 4%">ID</th>
+                            <th style="width: 12%">Name</th>
+                            <th style="width: 11%">Address</th>
+                            <th style="width: 6%">State</th>
+                            <th style="width: 6%">QPS</th>
+                            <th style="width: 6%">Queries</th>
+                            <th style="width: 6%">Drops</th>
+                            <th style="width: 6%">Drate</th>
+                            <th style="width: 6%">Lat</th>
+                            <th style="width: 3%">TCP</th>
+                            <th style="width: 6%">Out</th>
+                            <th style="width: 18%">Pools</th>
+                            <th style="width: 10%">Comand</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="server in getServers(agent.id)" :key="server.id">
+                            <td>{{ server.server_id }}</td>
+                            <td>{{ server.name }}</td>
+                            <td><code>{{ server.address }}</code></td>
+                            <td>
+                              <span
+                                :class="server.state.toLowerCase() === 'up' ? 'badge badge-success' : 'badge badge-danger'">
+                                {{ server.state }}
+                              </span>
+                            </td>
+                            <td>{{ server.qps }}</td>
+                            <td>{{ server.queries }}</td>
+                            <td>{{ server.drops }}</td>
+                            <td>{{ server.drate }}</td>
+                            <td>{{ server.lat }}</td>
+                            <td>{{ server.tcp }}</td>
+                            <td>{{ server.outstanding }}</td>
+                            <td><code>{{ server.pools }}</code></td>
+                            <td>
+                              <div class="buttons-tab-small">
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setAuto()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>UP</span>
+                                </button>
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'getServer(\'' + server.server_id + '\'):setDown()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>Down</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </transition>
+                </div>
+
+                <!-- Top Clients Section -->
+                <div class="rules-section">
+                  <div class="rules-toggle" @click="toggleTopClients(agent.originalIndex)">
+                    <div>
+                      <strong>👥 Top Clients ({{ getTopClientsCount(agent.id) }})</strong>
+                    </div>
+                    <span class="rules-toggle-icon" :class="{ 'expanded': expandedTopClients[agent.originalIndex] }">
+                      ▶
+                    </span>
+                  </div>
+                  <transition name="collapse">
+                    <div v-if="expandedTopClients[agent.originalIndex]" class="rules-table-container">
+                      <table class="rules-table">
+                        <thead>
+                          <tr>
+                            <th style="width: 10%">Rank</th>
+                            <th style="width: 30%">Client</th>
+
+                            <th style="width: 20%">Queries</th>
+                            <th style="width: 20%">Percentage</th>
+                            <th style="width: 20%">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="client in getTopClients(agent.id)" :key="client.id">
+                            <td>{{ client.rank }}</td>
+                            <td><code>{{ client.client }}</code></td>
+
+                            <td>{{ client.queries }}</td>
+                            <td>{{ client.percentage }}</td>
+                            <td>
+                              <div class="buttons-tab-small">
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), DropAction(), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>DropAction</span>
+                                </button>
+
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(100), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(100)</span>
+                                </button>
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(NetmaskGroupRule(\'' + client.client+ '\'), QPSAction(1000), {name=\'' + 'manual_' +  client.client+ '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(1000)</span>
+                                </button>
+                                <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </transition>
+                </div>
+
+                <!-- Top Queries Section -->
+                <div class="rules-section">
+                  <div class="rules-toggle" @click="toggleTopQueries(agent.originalIndex)">
+                    <div>
+                      <strong>🔍 Top Queries ({{ getTopQueriesCount(agent.id) }})</strong>
+                    </div>
+                    <span class="rules-toggle-icon" :class="{ 'expanded': expandedTopQueries[agent.originalIndex] }">
+                      ▶
+                    </span>
+                  </div>
+                  <transition name="collapse">
+                    <div v-if="expandedTopQueries[agent.originalIndex]" class="rules-table-container">
+                      <table class="rules-table">
+                        <thead>
+                          <tr>
+                            <th style="width: 10%">Rank</th>
+                            <th style="width: 30%">Query</th>
+                            <th style="width: 20%">Count</th>
+                            <th style="width: 20%">Percentage</th>
+                            <th style="width: 20%">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="query in getTopQueries(agent.id)" :key="query.id">
+                            <td>{{ query.rank }}</td>
+                            <td><code>{{ query.query }}</code></td>
+                            <td>{{ query.count }}</td>
+                            <td>{{ query.percentage }}</td>
+                            <td>
+                              <div class="buttons-tab-small">
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), DropAction(), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>DropAction</span>
+                                </button>
+
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(100), {name=\'' + 'manual_' +  query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(100)</span>
+                                </button>
+
+                                <button
+                                  class="btn-small"
+                                  @click="sendCommand(agent, agent.originalIndex,'addAction(SuffixMatchNodeRule(\'' + query.query+ '\'), QPSAction(1000), {name=\'' + 'manual_' + query.query + '\'}) mvRuleToTop()')"
+                                  :class="{ 'btn-loading': isActionsLocked }">
+                                  <span v-if="isActionsLocked" class="spinner"></span>
+                                  <span v-else>QPSAction(1000)</span>
+                                </button>
+                                <!-- <button class="btn-small" @click="sendCommand(agent, agent.originalIndex,'whitelist:addMask(\'' + client.client+ '\') tostring(whitelist) ')">Add to whitelist</button> -->
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </transition>
+                </div>
+              </div>
+            </transition>
+          </div>
         </div>
+      </div>
 
+      {% include 'components/help_modal.html' %} {% include 'components/history_modal.html' %} {% include
+      'components/agents_modal.html' %}
+    </div>
 
-{% include 'components/help_modal.html' %}
-{% include 'components/history_modal.html' %}
-{% include 'components/agents_modal.html' %}
-
-</div>
-
-<script src="{{{ url_for('static', filename='js/app.js') }}}"></script>
-<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
-</body>
+    <script src="{{{ url_for('static', filename='js/app.js') }}}"></script>
+    <script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
+  </body>
 </html>

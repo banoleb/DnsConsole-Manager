@@ -1,7 +1,8 @@
-from console import create_app
 import logging
+
+from console import create_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('web-console-init')
 app = create_app()
-logger.info(f'Database initialized successfully')
+logger.info('Database initialized successfully')

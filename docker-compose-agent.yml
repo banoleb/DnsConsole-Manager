@@ -16,6 +16,10 @@ services:
     # or use in .env file
     # env_file:
     #   - .env
+    # Agent use HTTPS protocol (see readme how to create ssl certs)
+    volumes:
+      - ./cert.pem:/app/cert.pem
+      - ./key.pem:/app/key.pem
     restart: unless-stopped
     command: agent
 

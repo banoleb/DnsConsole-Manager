@@ -1,29 +1,19 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     {% include 'components/head.html' %}
-</head>
+  </head>
 
-<body>
+  <body>
     <!-- Navbar -->
     <div id="app2">
-        <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">
-            
-            {% include 'components/navbar.html' %}
-            
-        </nav>
+      <nav class="navbar" data-auth-enabled="{{{ auth_enabled|lower }}}">{% include 'components/navbar.html' %}</nav>
     </div>
     <div class="container">
-        <h3>
-            Oops! HTTP 500 Error
-        </h3>
-        <p>
-            HTTP 500 Error
-
-        </p>
+      <h3>Oops! HTTP 500 Error</h3>
+      <p>HTTP 500 Error</p>
     </div>
 
-
-<script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
-</body>
+    <script src="{{{ url_for('static', filename='js/sync_stat.js') }}}"></script>
+  </body>
 </html>

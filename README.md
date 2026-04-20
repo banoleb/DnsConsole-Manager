@@ -1,4 +1,4 @@
-# DnsConsole-Manager (beta v0.0.4)
+# DnsConsole-Manager (beta v0.0.5)
 
 ✨`I am actively developing the project and will be glad to receive any contribution.`
 
@@ -17,20 +17,21 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 ### API Server Architecture
 ```
 ┌─────────────────┐
-│ Web-Console     │ (console.py): Flask-based web interface for managing and monitoring API server agents
+│ Web-Console     │ (console.py): Flask-based web interface for
+|                 |               managing and monitoring API server agents
 └────────┬────────┘
          │ JSON Request
          │ {"command": "..."}
          ▼
 ┌─────────────────┐
-│ webapi-agent   │  (webapi-agent.py) (HTTP Server cli proxy)
+│ webapi-agent    │  (webapi-agent.py) HTTPs Server cli proxy
 │                 │
 └────────┬────────┘
          │
          │ CLI Console Connection
          ▼
 ┌─────────────────┐
-│   dnsdist       │
+│  dnsdist        │  (add dnsdist-conf/manager.lua for Access list logic)
 │  127.0.0.1:5199 │
 └────────┬────────┘
          │ Execute Command
@@ -48,13 +49,25 @@ Dnsdist Web-Console-Manager is a  centralized management of multiple dnsdist ins
 - ✅ Background sync of  showRules() and showServers() and etc.
 - ✅ Command autocomplete and history
 - ✅ Automatic rules synchronization to agents
-- ✅ Victoria Metrics integration for agent status, topClients, and topQueries metrics export
+- ✅ Metrics integration for agent status, topClients, and topQueries metrics export
 
 
 ![alt text][logo3]
-## Quick Start
+# Quick Start
 
-### Using dnsdist and cli
+#### Using dnsdist and cli
+
+##### Before we begin - manager.lua
+
+To manage lists and synchronize them with the console
+Added the ListManager class and manager object.
+
+For now this is a workaround and may be changed in the future.
+To synchronize, we need to retrieve current IP domain lists and compare them with the database.
+Without this, the functionality of Access-lists won't work.
+
+But everything else will work. If you don't need this functionality, you don't have to add the lua script.
+
 
 ##### read this https://www.dnsdist.org/guides/console.html
 
@@ -83,7 +96,12 @@ systemctl restart dnsdist
 
 1. pull project
 
-2. Install Python dependencies:
+2. Generate ssl cert for agent
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes  -out cert.pem -keyout key.pem  -days 9999   -config san.cnf -extensions v3_req
+```
+
+3. Install Python dependencies:
 
 ```bash
 pip3 install -r requirements.txt
@@ -135,6 +153,7 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 wsgi:app
 
 to start background syncer process:
 ```
+export DNSDIST_SYNCER_TOKEN='' (if env:AUTH_ENABLED true)
 ./syncer.sh
 ```
 
@@ -156,27 +175,6 @@ docker exec -it dist-manager bash
 cat /var/log/supervisor/web.error.log
 ```
 
-### Gunicorn
-**Additional Gunicorn options:**
-
-```bash
-# Bind to a specific host and port
-gunicorn --workers 4 --bind 127.0.0.1:5000 wsgi:app
-
-# Enable access logging
-gunicorn --workers 4 --bind 0.0.0.0:5000 --access-logfile - wsgi:app
-
-# Run as a daemon (background process)
-gunicorn --workers 4 --bind 0.0.0.0:5000 --daemon wsgi:app
-
-# Specify a PID file
-gunicorn --workers 4 --bind 0.0.0.0:5000 --pid /var/run/gunicorn.pid wsgi:app
-
-# Set worker timeout (useful for long-running commands)
-gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
-```
-
-
 #### 2. Access the web console in your browser:
    - Web Console: http://localhost:5000/
 
@@ -191,7 +189,7 @@ gunicorn --workers 4 --bind 0.0.0.0:5000 --timeout 120 wsgi:app
 # use seed_data.psql.sql for psql
 psql -h server-psql -U psql -d psql -f db/seed_data.psql.sql
 
-# use seed_data.sqlite.sql for sqlite 
+# use seed_data.sqlite.sql for sqlite
 cd app
 python3 init_db.py # create empty
 # or add some seed data
@@ -220,10 +218,7 @@ sqlite3 app/dnsdist_webapi.db < db/seed_data.sqlite.sql
 
 #### Monitoring
 
-- `VICTORIA_METRICS_ENABLED` false
-- `VICTORIA_METRICS_HOST` - Victoria Metrics host (default: localhost)
-- `VICTORIA_METRICS_PORT` - Victoria Metrics port (default: 8428)
-- `VICTORIA_METRICS_URL` - Victoria Metrics URL path (default: /api/v1/import/prometheus)
+- `METRICS_ENABLED` false
 
 #### login (see .env)
 - `AUTH_ENABLED` - false
@@ -252,3 +247,8 @@ pytest test_console.py -v
 - Refactoring css
 - Many bugs and errors have been fixed
 - Quick links for commands and more
+#### BETA v0.0.5 28.03.2026
+- 🔥Implement SSL/TLS encryption for agent communication
+- Major liner refactoring for code maintainability
+- Remove Victoria Metrics integration, keep only URL metrics
+- Multiple improvements and optimizations

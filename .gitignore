@@ -20,3 +20,7 @@ alembic/versions/__pycache__/
 data/
 venv/
 
+cert.pem
+key.pem
+node_modules
+*.db

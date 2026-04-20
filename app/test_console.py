@@ -624,7 +624,7 @@ class TestOIDCFlow:
 
     def test_oidc_initiate_redirects_to_provider(self):
         """GET /auth/oidc sets state and redirects to provider"""
-        from unittest.mock import patch
+
         from settings import settings as s
         original_oidc = s.OIDC_ENABLED
         original_url = s.OIDC_PROVIDER_URL
@@ -679,7 +679,8 @@ class TestOIDCFlow:
 
     def test_oidc_callback_group_check_denies_user(self):
         """OIDC callback denies user not in required group"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from settings import settings as s
         original_oidc = s.OIDC_ENABLED
         original_group = s.OIDC_REQUIRED_GROUP
@@ -727,7 +728,8 @@ class TestOIDCFlow:
 
     def test_oidc_callback_group_check_allows_user(self):
         """OIDC callback allows user in required group and sets session"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from settings import settings as s
         original_oidc = s.OIDC_ENABLED
         original_group = s.OIDC_REQUIRED_GROUP

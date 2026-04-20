@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 
+
 class Settings:
     """Configuration settings with defaults and environment variable support"""
     TIMEOUT_AGENT = int(os.environ.get('TIMEOUT_AGENT', 2))
@@ -23,8 +24,9 @@ class Settings:
     DNSDIST_CONSOLE_HOST = os.environ.get('DNSDIST_CONSOLE_HOST', '127.0.0.1')
     DNSDIST_CONSOLE_PORT = int(os.environ.get('DNSDIST_CONSOLE_PORT', '5199'))
     DNSDIST_KEY = os.environ.get('DNSDIST_KEY')  # Encryption key for console (optional)
-    # for syncer.sh script - run background sync 
-    DNSDIST_SYNCER_TOKEN = os.environ.get('DNSDIST_SYNCER_TOKEN','32c7002bdfae61eceefa36b10bd1e950520527c1a60292d1daa4f86326de3324') # token for syncer.sh
+    # for syncer.sh script - run background sync
+    # token for syncer.sh
+    DNSDIST_SYNCER_TOKEN = os.environ.get('DNSDIST_SYNCER_TOKEN', '32c7002bdfae61eceefa36b10bd1e950520527c1a60292d1daa4f86326de3324')
 
     # -------------------------------------------------------------------------
     # Authentication settings
@@ -39,7 +41,7 @@ class Settings:
     # Local username/password authentication
     # Set AUTH_ENABLED=false to disable the login form entirely (e.g. when
     # using OIDC as the sole auth method or running in a fully-trusted network).
-    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
     # -------------------------------------------------------------------------
     # OpenID Connect (OIDC / OAuth 2.0) SSO settings
@@ -84,17 +86,14 @@ class Settings:
     # DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://psqlmaster:psqlmaster@192.168.0.160/distapi')
 
     # Logging settings
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
     LOG_FORMAT = os.environ.get('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     # Debug mode
     DEBUG = os.environ.get('DEBUG', 'false').lower() in ('true', '1', 'yes')
 
-    # Victoria Metrics settings
-    VICTORIA_METRICS_ENABLED = os.environ.get('VICTORIA_METRICS_ENABLED', 'false').lower() in ('true', '1', 'yes')
-    VICTORIA_METRICS_HOST = os.environ.get('VICTORIA_METRICS_HOST', 'localhost')
-    VICTORIA_METRICS_PORT = int(os.environ.get('VICTORIA_METRICS_PORT', '8428'))
-    VICTORIA_METRICS_URL = os.environ.get('VICTORIA_METRICS_URL', '/api/v1/import/prometheus')
+    # Metrics settings
+    METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
     @classmethod
     def get_log_level(cls):
@@ -113,15 +112,15 @@ class Settings:
 
         if 'gunicorn' in sys.modules:
             gunicorn_logger = logging.getLogger('gunicorn.error')
-            
+
             root_logger = logging.getLogger()
             root_logger.handlers = gunicorn_logger.handlers
             root_logger.setLevel(cls.get_log_level())
-            
+
             flask_logger = logging.getLogger('flask')
             flask_logger.handlers = gunicorn_logger.handlers
             flask_logger.setLevel(cls.get_log_level())
-            
+
             app_logger = logging.getLogger('app')
             app_logger.handlers = gunicorn_logger.handlers
             app_logger.setLevel(cls.get_log_level())

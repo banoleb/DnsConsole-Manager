@@ -37,7 +37,7 @@ INSERT INTO rule_command_templates (id, name, template, description, is_active, 
     (9, 'NetmaskGroupRule',  'addAction(NetmaskGroupRule({{r_access_list}}), DropAction(),{name="{{r_name}}",uuid = "{{r_uuid}}"})',                                            'Matches based on a group of IP suffixes. Checks if the client IP address (or destination) in the specified network-range.',    1, '2024-01-01 00:00:00', '2024-01-01 00:00:00');
 
 INSERT INTO access_list (id, name, value, type, category, enabled, reason, source, hit_count, created_at, created_by, updated_at) VALUES
-                         (1, 'blocklist-1', 'example.org', 'list', 'ip', 0, 'test', 'manual', 0  ,'2024-01-01 00:00:00', 0, '2024-01-01 00:00:00');                                                             
+                         (1, 'blocklist-1', 'example.org', 'list', 'ip', 0, 'test', 'manual', 0  ,'2024-01-01 00:00:00', 0, '2024-01-01 00:00:00');
 
 
 INSERT INTO sync_status (id, last_sync_time, status, synced_agents_count, failed_agents_count, error_message) VALUES

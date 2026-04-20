@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import asyncio
 import functools
 import json
 import logging
@@ -9,50 +10,35 @@ import secrets
 import time
 import urllib.parse
 from datetime import datetime, timezone
+
+import parsers
 import requests
 import sqlalchemy as sa
+import urllib3
+from flask import (Flask, jsonify, redirect, render_template, request,
+                   send_from_directory, session, url_for)
+from metrics import MetricsExporter
+from models import (AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
+                    Database, DownstreamServer, DynBlockRule, Group,
+                    ManagerList, Rule, RuleCommandTemplate, SyncStatus,
+                    TopClient, TopQuery, User, utc_now)
+from settings import settings
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
-import asyncio
-import parsers
-from flask import (
-    Flask, jsonify, redirect, render_template, request,
-    send_from_directory, session, url_for
-)
-from models import (
-    AccessList, Agent, AgentDynBlock, AuditLog, CommandHistory,
-    Database, DownstreamServer, DynBlockRule, Group, ManagerList,
-    Rule, RuleCommandTemplate, SyncStatus, TopClient, TopQuery, User,
-    utc_now
-)
-from settings import settings
-from victoria_metrics import VictoriaMetricsExporter
-
 
 settings.configure_logging()
 logger = logging.getLogger('web-console-manager')
 db = None
-victoria_metrics_exporter = None
+metrics_exporter = None
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def create_app():
     """
     Flask application factory
-
-    This function creates and configures the Flask application instance.
-    It initializes the database and Victoria Metrics integration.
-
-    In a multi-worker environment (e.g., Gunicorn), each worker process
-    will call this function once, creating its own database connection
-    and app instance. This is the correct behavior for WSGI applications.
-
-    Returns:
-        Flask: Configured Flask application instance
-
-    Raises:
-        Exception: If database or Victoria Metrics initialization fails
     """
-    global db, victoria_metrics_exporter
+
+    global db, metrics_exporter
 
     flask_app = Flask(__name__)
 
@@ -73,13 +59,13 @@ def create_app():
             db.create_tables()
             logger.info(f'Database initialized: {settings.DATABASE_URL}')
 
-        # Initialize Victoria Metrics exporter if not already done
-        if victoria_metrics_exporter is None:
-            victoria_metrics_exporter = VictoriaMetricsExporter()
-            if victoria_metrics_exporter.enabled:
-                logger.info(f'Victoria Metrics integration enabled: {victoria_metrics_exporter.base_url}')
+        # Initialize Metrics exporter if not already done
+        if metrics_exporter is None:
+            metrics_exporter = MetricsExporter()
+            if metrics_exporter.enabled:
+                logger.info(f'Metrics integration is : {metrics_exporter.enabled}')
             else:
-                logger.info('Victoria Metrics integration is disabled')
+                logger.info(f'Metrics integration is : {metrics_exporter.enabled}')
     except Exception as e:
         logger.error(f'Error initializing application: {e}')
         raise
@@ -121,14 +107,34 @@ def _authenticate_bearer_token():
     finally:
         db_session.close()
 
-# to-do
-def command_to_send(agent,command):
-    result_code = ''   
+
+class ErrorResponse:
+    """Stub class for error response"""
+
+    def __init__(self, status_code, error_message):
+        self.status_code = status_code
+        self.ok = False
+        self._error_message = error_message
+
+    def json(self):
+        return {
+            'success': False,
+            'error': self._error_message,
+            'status_code': self.status_code
+        }
+
+    @property
+    def text(self):
+        return f'{{"error": "{self._error_message}"}}'
+
+
+def command_to_send(agent, command, logger_fun_name=''):
+
     try:
         agent_url = agent.get_url()
         agent_token = agent.agent_token
 
-        logger.debug(f"fun: command_to_send: URL {agent_url}")
+        logger.debug(f"fun:command_to_send:{logger_fun_name} URL {agent_url}")
         response = requests.post(
             f'{agent_url}/api/v1/command',
             json={'command': command},
@@ -136,19 +142,25 @@ def command_to_send(agent,command):
                 'Content-Type': 'application/json',
                 'X-Agent-Token': agent_token
             },
-            timeout=10
+            timeout=settings.TIMEOUT_AGENT,
+            verify=False
         )
-        result_code = response.status_code
-        if result_code == 200:
-            logger.debug(f"fun: command_to_send: {result_code}")
-            return response
-        else:
-            logger.debug(f"fun: command_to_send: Error in HTTP {result_code}")
-            return response
-    except Exception as e:
-        logger.error(f"fun: command_to_send: {str(e)}")
+
+        logger.debug(f"fun:command_to_send:{logger_fun_name}: {response.status_code}")
         return response
-    
+
+    except requests.exceptions.Timeout:
+        logger.error(f"fun:command_to_send:{logger_fun_name} Timeout")
+        return ErrorResponse(408, f"Timeout after {settings.TIMEOUT_AGENT}s")
+
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"fun:command_to_send:{logger_fun_name} Connection error")
+        return ErrorResponse(503, f"Connection error: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"fun:command_to_send:{logger_fun_name} {str(e)}")
+        return ErrorResponse(500, str(e))
+
 
 def _get_current_user_id():
     """Return the user id of the currently authenticated user.
@@ -173,15 +185,16 @@ def login_required(f):
         # Accept a valid Bearer token as an alternative to a session cookie.
         if _authenticate_bearer_token():
             return _call_function(f, *args, **kwargs)
-        
+
         if not session.get('user_id'):
             if request.path.startswith('/api/'):
                 return jsonify({'success': False, 'error': 'Authentication required'}), 401
             return redirect(url_for('login', next=request.path))
-        
+
         return _call_function(f, *args, **kwargs)
-    
+
     return decorated_function
+
 
 def _call_function(f, *args, **kwargs):
     """Helper to call both sync and async functions properly."""
@@ -210,6 +223,7 @@ def extract_uuid_from_adddynblocks(command):
         rules = "Error"
     return rules
 
+
 def determine_category(name):
     if name.startswith('ip'):
         return 'ip'
@@ -223,54 +237,52 @@ def determine_category(name):
 
 def sync_accesslist_to_database(agent_name, parsed_data, session):
 
-    logger.debug(f"fun: sync_accesslist_to_database: start sync {agent_name}")
+    logger.debug(f"fun:sync_accesslist_to_database: start sync {agent_name}")
     try:
         current_records = session.query(ManagerList).filter_by(
             agent_name=agent_name
         ).all()
         existing_records = {record.name: record for record in current_records}
-        
-        logger.debug(f"fun: sync_accesslist_to_database: data from {agent_name}")
+
+        logger.debug(f"fun:sync_accesslist_to_database: data from {agent_name}")
         for name, record in existing_records.items():
-            logger.debug(f"fun: sync_accesslist_to_database: {name}: {record.value}")
-        
-        logger.debug(f"fun: sync_accesslist_to_database: new data {agent_name}")
+            logger.debug(f"fun:sync_accesslist_to_database: {name}: {record.value}")
+
+        logger.debug(f"fun:sync_accesslist_to_database: new data {agent_name}")
         for name, values in parsed_data.items():
             if values:
-                logger.debug(f"fun: sync_accesslist_to_database:  {name}: {values}")
+                logger.debug(f"fun:sync_accesslist_to_database:  {name}: {values}")
             else:
-                logger.debug(f"fun: sync_accesslist_to_database:  {name}: empty")
-        
+                logger.debug(f"fun:sync_accesslist_to_database:  {name}: empty")
+
         added_count = 0
         updated_count = 0
         deleted_count = 0
         skipped_count = 0
-        
+
         for name, values in parsed_data.items():
             category = determine_category(name)
-            
             if values:
                 values_str = ', '.join(values)
             else:
                 values_str = ''
-            logger.debug(f"fun: sync_accesslist_to_database: start work {name}")
+            logger.debug(f"fun:sync_accesslist_to_database: start work {name}")
             if name in existing_records:
                 record = existing_records[name]
-
                 if record.value != values_str or record.category != category:
-                    logger.debug(f"fun: sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
+                    logger.debug(f"fun:sync_accesslist_to_database: old '{record.value}', new '{values_str}'")
                     record.value = values_str
                     record.category = category
-                    record.updated_at = datetime.utcnow()
+                    record.updated_at = datetime.now(timezone.utc)
                     updated_count += 1
                 else:
-                    logger.debug(f"fun: sync_accesslist_to_database: no changes")
+                    logger.debug(f"fun:sync_accesslist_to_database: no changes for {name}")
                     skipped_count += 1
-                
+
                 del existing_records[name]
             else:
                 if values_str:
-                    logger.debug(f"fun: sync_accesslist_to_database: new item {name} = {values_str}")
+                    logger.debug(f"fun:sync_accesslist_to_database: new item {name} = {values_str}")
                     new_item = ManagerList(
                         name=name,
                         agent_name=agent_name,
@@ -280,25 +292,24 @@ def sync_accesslist_to_database(agent_name, parsed_data, session):
                     session.add(new_item)
                     added_count += 1
                 else:
-                    logger.debug(f"fun: sync_accesslist_to_database: skip empty add")
-        
+                    logger.debug(f"fun:sync_accesslist_to_database: skip empty for {name}")
+
         for name, record in existing_records.items():
-            logger.debug(f"fun: sync_accesslist_to_database:  remove old list {name} = {record.value}")
+            logger.debug(f"fun:sync_accesslist_to_database:  remove old list {name} = {record.value}")
             session.delete(record)
             deleted_count += 1
-        
+
         session.commit()
-        
-        logger.debug(f"fun: sync_accesslist_to_database: stats: {agent_name}")
-        logger.debug(f"fun: sync_accesslist_to_database: added: {added_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: updated: {updated_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: deleted: {deleted_count}")
-        logger.debug(f"fun: sync_accesslist_to_database: skiped: {skipped_count}")
-        
+        logger.debug(f"fun:sync_accesslist_to_database: stats: {agent_name}")
+        logger.debug(f"fun:sync_accesslist_to_database: added: {added_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: updated: {updated_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: deleted: {deleted_count}")
+        logger.debug(f"fun:sync_accesslist_to_database: skiped: {skipped_count}")
+
         return True
-        
+
     except Exception as e:
-        logger.error(f'sync_accesslist_to_database error for agent {agent_name}: {str(e)}')
+        logger.error(f'fun:sync_accesslist_to_database error for agent {agent_name}: {str(e)}')
         session.rollback()
         return False
 
@@ -326,7 +337,6 @@ def normalize_parsed_data(parsed_data):
         - Preserves the original list names
     """
     normalized = {}
-    
     for list_name, values in parsed_data.items():
         if not values:
             normalized[list_name] = []
@@ -343,109 +353,95 @@ def normalize_parsed_data(parsed_data):
 
 def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
-    logger.debug(f"fun: sync_accesslist_to_agents: start sync {agent.agent_name}")
-
+    logger.debug(f"fun:sync_accesslist_to_agents: start sync {agent.agent_name}")
     parsed_data = normalize_parsed_data(raw_parsed_data)
-    logger.debug(f"fun: sync_accesslist_to_agents: data from agent {agent.agent_name}")
+    logger.debug(f"fun:sync_accesslist_to_agents: data from agent {agent.agent_name}")
     for list_name, values in parsed_data.items():
         if values:
-            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: {values}")
+            logger.debug(f"fun:sync_accesslist_to_agents: data from agent {list_name}: {values}")
         else:
-            logger.debug(f"fun: sync_accesslist_to_agents: data from agent {list_name}: empty")
+            logger.debug(f"fun:sync_accesslist_to_agents: data from agent {list_name}: empty")
 
     access_items = session.query(AccessList).filter_by(
         enabled=True
     ).all()
 
     truth_lists = {}
-    
+
     for item in access_items:
-        list_name = item.name 
-        
+        list_name = item.name
         if list_name not in truth_lists:
             truth_lists[list_name] = set()
-
         values = split_and_normalize(item.value)
         for val in values:
             truth_lists[list_name].add(val)
     # truth_list ={'blocklist': {'1.2.3.0', '192.168.0.1'}, 'domain_spam': {'1.1.2.3'}, 'ip_ip_list': {'6.6.6.6'}}
-    logger.debug(f"fun: sync_accesslist_to_agents: (source of truth - what SHOULD be on an agent) {truth_lists}")
+    logger.debug(f"fun:sync_accesslist_to_agents: (source of truth - what SHOULD be on an agent) {truth_lists}")
     for list_name, values in truth_lists.items():
-        logger.debug(f"fun: sync_accesslist_to_agents: {list_name}: {(values)}")
-    agent_url = agent.get_url()
+        logger.debug(f"fun:sync_accesslist_to_agents: {list_name}: {(values)}")
     commands_sent = 0
     # parsed_data.keys() =  dict_keys(['domain_spam', 'ip_ip_list', 'tttttt'])
     if parsed_data:
-
         for agent_list_name in parsed_data.keys():
-            logger.debug(f"fun: sync_accesslist_to_agents: {agent_list_name} ")
+            logger.debug(f"fun:sync_accesslist_to_agents: {agent_list_name} ")
             found_in_truth = False
             if agent_list_name in truth_lists.keys():
-                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents: compare: , {agent_list_name}")
                 found_in_truth = True
             else:
-                logger.debug(f"fun: sync_accesslist_to_agents: compare: , {agent_list_name}")
-
+                logger.debug(f"fun:sync_accesslist_to_agents: compare: , {agent_list_name}")
             if not found_in_truth:
-                logger.debug(f"fun: sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents: delete the old list from the agent: {agent_list_name}")
                 command = f'manager:remove_list("{agent_list_name}")'
                 try:
-                    response = command_to_send(agent,command)
+                    response = command_to_send(agent, command)
                     time.sleep(0.1)
                     if response.status_code == 200:
-                        logger.debug(f"fun: sync_accesslist_to_agents: Successfully")
+                        logger.debug(f"fun:sync_accesslist_to_agents: Successfully {agent_list_name}")
                         commands_sent += 1
                     else:
-                        logger.debug(f"fun: sync_accesslist_to_agents: error")
+                        logger.debug(f"fun:sync_accesslist_to_agents: error {agent_list_name}")
                 except Exception as e:
-                    logger.error(f"fun: sync_accesslist_to_agents: error {str(e)}")
+                    logger.error(f"fun:sync_accesslist_to_agents: error {str(e)}")
 
     for truth_name, truth_values in truth_lists.items():
         logger.debug(f"fun: sync_accesslist_to_agents: Processing a list from AccessList {truth_name}")
-    
         target_list_name = truth_name
         try:
-
             # dict_keys(['domain_whitelist', 'domain_spam', 'ip_ip_list', 'tttttt'])
             parsed_values_for_list = {}
-
-            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {agent.agent_name}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Agent data {agent.agent_name}")
             for list_name, values in parsed_data.items():
-                logger.debug(f"fun: sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Agent data {list_name} {values} {truth_name}")
                 if list_name == truth_name:
                     parsed_values_for_list = values
 
-            logger.debug(f"fun: sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Agent data {parsed_values_for_list}")
             parsed_values_for_list = set(parsed_values_for_list)
-
-            logger.debug(f"fun: sync_accesslist_to_agents:Target list on agent {target_list_name}")
-            logger.debug(f"fun: sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
-            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values}")
-            
+            logger.debug(f"fun:sync_accesslist_to_agents:Target list on agent {target_list_name}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target item on agent  {parsed_values_for_list}")
+            logger.debug(f"fun:sync_accesslist_to_agents:Target  {truth_values}")
             to_add = truth_values - parsed_values_for_list
-            logger.debug(f"fun: sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
-
+            logger.debug(f"fun:sync_accesslist_to_agents:Target  {truth_values} {parsed_values_for_list} to-add: {to_add}")
             for item in to_add:
-                logger.debug(f"fun: sync_accesslist_to_agents:Add: {item}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Add: {item}")
                 command = f'manager:add("{target_list_name}", "{item}")'
-                command_to_send(agent,command)
+                command_to_send(agent, command)
 
             to_remove = parsed_values_for_list - truth_values
             for item in to_remove:
-                logger.debug(f"fun: sync_accesslist_to_agents:Delete: {item}")
+                logger.debug(f"fun:sync_accesslist_to_agents:Delete: {item}")
                 command = f'manager:remove("{target_list_name}", "{item}")'
-                if command_to_send(agent,command):
+                if command_to_send(agent, command):
                     commands_sent += 1
                 else:
                     commands_sent += 1
         except Exception as e:
             logger.warning(f' {str(e)}')
-    
     if commands_sent == 0:
-        logger.debug(f"fun: sync_accesslist_to_agents:Data is synchronized, no commands required. ")
+        logger.debug(f"fun:sync_accesslist_to_agents:Data is synchronized, no commands required.{agent.agent_name}")
     else:
-        logger.info(f"fun: sync_accesslist_to_agents:SYNCHRONIZATION COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
-    
+        logger.info(f"fun:sync_accesslist_to_agents:SYNC COMPLETED FOR {agent.agent_name} Commands sent {commands_sent}")
     return {
         'success': True,
         'commands_sent': commands_sent,
@@ -454,7 +450,6 @@ def sync_accesslist_to_agents(agent, raw_parsed_data, session):
 
 
 def sync_rules_to_database(agent_name, parsed_rules, session):
-
     """
     Operating logic:
     1. UUID is the main field for identifying errors.
@@ -464,11 +459,9 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
     5. The order of the data entry rules is not important.
     """
     logger.debug(f"fun:sync_rules_to_database:=== STARTING SYNC for agent {agent_name} ===")
-
     # Get the existing agent rules
     existing_rules = session.query(Rule).filter_by(agent_name=agent_name).all()
     logger.debug(f"fun:sync_rules_to_database:Found {len(existing_rules)} existing rules in DB")
-
     # Create a lookup dictionary by UUID (primary identifier)
     existing_rules_by_uuid = {rule.uuid: rule for rule in existing_rules if rule.uuid}
     logger.debug(f"fun:sync_rules_to_database:UUID lookup map: {len(existing_rules_by_uuid)} entries")
@@ -489,13 +482,11 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
             stats['deleted'] += 1
     else:
         logger.debug(f"fun:sync_rules_to_database:Processing {len(parsed_rules)} rules from input")
-
         # A set of UUIDs from the input data to determine the rules to be removed
         input_uuids = set()
         # We process each rule from the input data
         for rule_data in parsed_rules:
             rule_uuid = rule_data.get('uuid')
-
             # Skip rules without UUIDs (shouldn't occur, but just in case)
             if not rule_uuid:
                 logger.debug(f"fun:sync_rules_to_database:Rule without UUID, skipping: {rule_data}")
@@ -512,10 +503,8 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
                 uuid=rule_uuid,
                 creation_order=rule_data.get('creation_order')
             )
-
             # Checking if a rule exists in the database by UUID
             existing_rule = existing_rules_by_uuid.get(rule_uuid)
-
             if existing_rule:
                 if _update_rule_if_changed(existing_rule, new_rule):
                     stats['updated'] += 1
@@ -541,7 +530,13 @@ def sync_rules_to_database(agent_name, parsed_rules, session):
         logger.error(f"fun:sync_rules_to_database:Error during commit: {e}")
         session.rollback()
         raise
-    _log_sync_results(agent_name, stats)
+
+    logger.debug(f"fun:sync_rules_to_database:=== SYNC RESULTS for agent {agent_name} ===")
+    logger.debug(f"fun:sync_rules_to_database:Added: {stats['added']}")
+    logger.debug(f"fun:sync_rules_to_database:Updated: {stats['updated']}")
+    logger.debug(f"fun:sync_rules_to_database:Unchanged: {stats['unchanged']}")
+    logger.debug(f"fun:sync_rules_to_database:Deleted: {stats['deleted']}")
+    logger.debug(f"fun:sync_rules_to_database:=== END SYNC {agent_name} ===")
     return stats
 
 
@@ -560,15 +555,6 @@ def _update_rule_if_changed(existing_rule, new_rule):
             setattr(existing_rule, field, new_value)
             changed = True
     return changed
-
-
-def _log_sync_results(agent_name, stats):
-    logger.debug(f"fun:_log_sync_results:=== SYNC RESULTS for agent {agent_name} ===")
-    logger.debug(f"fun:_log_sync_results:Added: {stats['added']}")
-    logger.debug(f"fun:_log_sync_results:Updated: {stats['updated']}")
-    logger.debug(f"fun:_log_sync_results:Unchanged: {stats['unchanged']}")
-    logger.debug(f"fun:_log_sync_results:Deleted: {stats['deleted']}")
-    logger.debug(f"fun:_log_sync_results:=== END SYNC {agent_name} ===")
 
 
 def sync_agent_status_to_database(agent_name, status, session):
@@ -601,12 +587,10 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
     """
     if not parsed_servers or not isinstance(parsed_servers, list):
         return
-
     # Fetch existing servers for this agent indexed by server_id
     existing_servers = {}
     for server in session.query(DownstreamServer).filter_by(agent_name=agent_name).all():
         existing_servers[server.server_id] = server
-
     # Track which server_ids we've seen in the new data
     seen_server_ids = set()
 
@@ -621,9 +605,7 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
         if server_id is None:
             logger.debug(f'fun:sync_servers_to_database:Server data missing id field, skipping: {server_data}')
             continue
-
         seen_server_ids.add(server_id)
-
         # Create a new server instance from the parsed data
         new_server = DownstreamServer(
             agent_name=agent_name,
@@ -675,9 +657,9 @@ def sync_servers_to_database(agent_name, parsed_servers, session):
             session.delete(server)
             removed_count += 1
     session.commit()
-    logger.debug(f'fun:sync_servers_to_database:Synced servers for agent {agent_name}: '
-                f'{added_count} added, {updated_count} updated, '
-                f'{unchanged_count} unchanged, {removed_count} removed')
+    logger.debug(f'fun:sync_servers_to_database:Synced servers for agent {agent_name}: ')
+    logger.debug(f'{added_count} added, {updated_count} updated')
+    logger.debug(f'{unchanged_count} unchanged, {removed_count} removed')
 
 
 def sync_dynblocks_to_database(agent_name, parsed_blocks, session):
@@ -686,11 +668,9 @@ def sync_dynblocks_to_database(agent_name, parsed_blocks, session):
     """
     if parsed_blocks is None:
         return
-
     # Handle empty list (no blocks)
     if not isinstance(parsed_blocks, list):
         return
-
     # Delete existing blocks for this agent
     session.query(AgentDynBlock).filter_by(agent_name=agent_name).delete()
 
@@ -721,7 +701,6 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
 
     new_clients = [client_data.get('client') for client_data in parsed_clients]
     logger.debug(f'fun:sync_topclients_to_database: {new_clients}')
-
     session.query(TopClient).filter(
         TopClient.agent_name == agent_name,
         ~TopClient.client.in_(new_clients)
@@ -729,19 +708,15 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
 
     for client_data in parsed_clients:
         client_name = client_data.get('client')
-        
         existing = session.query(TopClient).filter_by(
             agent_name=agent_name,
             client=client_name
         ).first()
-        
         if existing:
-
             existing.rank = client_data.get('rank')
             existing.queries = client_data.get('queries', 0)
             existing.percentage = client_data.get('percentage', '0.0%')
         else:
-
             client = TopClient(
                 agent_name=agent_name,
                 rank=client_data.get('rank'),
@@ -750,31 +725,24 @@ def sync_topclients_to_database(agent_name, parsed_clients, session):
                 percentage=client_data.get('percentage', '0.0%')
             )
             session.add(client)
-
     session.commit()
     logger.debug(f'fun:sync_topclients_to_database:Synced {len(parsed_clients)} top clients for agent {agent_name}')
 
 
-
 def sync_topqueries_to_database(agent_name, parsed_queries, session):
-
     new_queries = [query_data.get('query') for query_data in parsed_queries]
     logger.debug(f'fun:sync_topclients_to_database: {new_queries}')
     session.query(TopQuery).filter(
         TopQuery.agent_name == agent_name,
         ~TopQuery.query.in_(new_queries)
     ).delete(synchronize_session=False)
-
     for query_data in parsed_queries:
         query_name = query_data.get('query')
-
         existing = session.query(TopQuery).filter_by(
             agent_name=agent_name,
             query=query_name
         ).first()
-        
         if existing:
-
             existing.rank = query_data.get('rank')
             existing.count = query_data.get('count', 0)
             existing.percentage = query_data.get('percentage', '0.0%')
@@ -813,7 +781,6 @@ def sync_dynblock_rules_to_agents(session):
             for agent in agents:
                 if agent.group_id == rule.group_id or rule.group_id is None:
                     logger.debug(f'fun:sync_dynblock_rules_to_agents:right agents group for  DynBlock {agent.agent_name}')
-                    agent_url = agent.get_url()
 
                     rule_exists = False
                     list_uuid_all = []
@@ -829,18 +796,8 @@ def sync_dynblock_rules_to_agents(session):
                         if not rule.is_active:
                             logger.debug(f'fun:sync_dynblock_rules_to_agents:Rule: {uuid} - disabled and found on agent {agent.agent_name}, need to be deleted')
                             rm_rule_cmd = f'rmRule("{uuid}")'
-
-                            # to-do
                             try:
-                                response = requests.post(
-                                    f'{agent_url}/api/v1/command',
-                                    json={'command': rm_rule_cmd},
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'X-Agent-Token': agent.agent_token
-                                    },
-                                    timeout=settings.TIMEOUT_AGENT
-                                )
+                                response = command_to_send(agent, rm_rule_cmd, sync_dynblock_rules_to_agents.__name__)
                                 error_msg = None
 
                                 if response.status_code == 200:
@@ -862,27 +819,24 @@ def sync_dynblock_rules_to_agents(session):
                     else:
                         # Execute the DynBlock rule command
                         if rule.is_active:
-                            logger.debug(f'fun:sync_dynblock_rules_to_agents:NO Rule {uuid} found on agent {agent.agent_name}, try to sync')
+
                             try:
-                                response = requests.post(
-                                    f'{agent_url}/api/v1/command',
-                                    json={'command': rule.rule_command},
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'X-Agent-Token': agent.agent_token
-                                    },
-                                    timeout=settings.TIMEOUT_AGENT
-                                )
-                                # sync_success = False
+                                response = command_to_send(agent, rule.rule_command, sync_dynblock_rules_to_agents.__name__)
+                                logger.debug(f'fun:sync_dynblock_rules_to_agents:NO Rule {uuid} found on agent {agent.agent_name}, try to sync {rule.rule_command}')
                                 error_msg = None
+                                response_data = response.json()
+
                                 if response.status_code == 200:
-                                    response_data = response.json()
-                                    if response_data.get('success'):
-                                        # sync_success = True
+
+                                    result_from_command = response_data.get('result', '')
+                                    if result_from_command.strip().startswith('Error'):
+                                        logger.error(f'fun:sync_dynblock_rules_to_agents:Error to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {result_from_command}')
+                                    elif response_data.get('success'):
+
                                         logger.debug(f'fun:sync_dynblock_rules_to_agents:Successfully synced DynBlock rule {rule.id} to agent {agent.agent_name}')
                                     else:
                                         error_msg = response_data.get('error', 'Unknown error')
-                                        logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
+                                        logger.error(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
                                 else:
                                     error_msg = f'HTTP {response.status_code}'
                                     logger.warning(f'fun:sync_dynblock_rules_to_agents:Failed to sync DynBlock rule {rule.id} to agent {agent.agent_name}: {error_msg}')
@@ -951,9 +905,9 @@ async def sync_data():
                 'version': agent.version,
                 'service_time': agent.service_time
             }
-            #  Try to get agent status
+
             try:
-                response = requests.get(f'{agent_url}/health', timeout=settings.TIMEOUT_AGENT)
+                response = requests.get(f'{agent_url}/health', timeout=settings.TIMEOUT_AGENT, verify=False)
                 if response.status_code == 200:
                     data = response.json()
                     agent_info['status'] = 'online'
@@ -970,8 +924,6 @@ async def sync_data():
                     skip_other_commands = True
                     info_tmp = agent_info['status']
                     error_messages.append(f'{agent.agent_name} status: {info_tmp}')
-
-
             except requests.exceptions.RequestException as e:
                 agent_info['status'] = 'offline'
                 agent_info['version'] = 'Unknown'
@@ -981,20 +933,12 @@ async def sync_data():
                 skip_other_commands = True
                 error_messages.append(f'{agent.agent_name} status: {str(e)}')
 
-
             time.sleep(0.1)
             if not skip_other_commands:
                 # sync_accesslist_to_database
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'manager:show_all()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'manager:show_all()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1010,6 +954,7 @@ async def sync_data():
                                 rules_success = True
                             else:
                                 rules_success = False
+
                     else:
                         agent_status = 'error'  # Non-200 response
                 except requests.exceptions.RequestException as e:
@@ -1028,18 +973,10 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showRules() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showRules({showUUIDs=true})'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'showRules({showUUIDs=true})'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
-
                         if response_data.get('success'):
                             result_text = response_data.get('result', '')
                             parsed_rules = parsers.parse_showrules_output(result_text)
@@ -1048,7 +985,6 @@ async def sync_data():
                             agent_status = 'online'  # Agent responded successfully
                     else:
                         agent_status = 'error'  # Non-200 response
-
                 except requests.exceptions.RequestException as e:
                     agent_status = 'offline'  # Connection error
                     error_msg = f'{agent.agent_name} rules: {str(e)}'
@@ -1064,15 +1000,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showServers() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showServers()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'showServers()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1097,16 +1026,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute showDynBlocks() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'showDynBlocks()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
-
+                    command = 'showDynBlocks()'
+                    response = command_to_send(agent, command, sync_data.__name__)
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1128,15 +1049,9 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute topClients() command
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'topClients()'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'topClients()'
+                    response = command_to_send(agent, command, sync_data.__name__)
+
                     if response.status_code == 200:
                         response_data = response.json()
                         if response_data.get('success'):
@@ -1162,15 +1077,8 @@ async def sync_data():
             if not skip_other_commands:
                 # Execute topResponses(10, 3) command NXDOMAIN
                 try:
-                    response = requests.post(
-                        f'{agent_url}/api/v1/command',
-                        json={'command': 'topResponses(10)'},
-                        headers={
-                            'Content-Type': 'application/json',
-                            'X-Agent-Token': agent.agent_token
-                        },
-                        timeout=settings.TIMEOUT_AGENT
-                    )
+                    command = 'topResponses(10)'
+                    response = command_to_send(agent, command, sync_data.__name__)
 
                     if response.status_code == 200:
                         response_data = response.json()
@@ -1251,21 +1159,7 @@ async def sync_data():
 
         session.commit()
         logger.debug(f'fun:sync_data:Background sync completed: {synced_count} synced, {failed_count} failed')
-        # Export metrics to Victoria Metrics if enabled
-        if victoria_metrics_exporter and victoria_metrics_exporter.enabled:
-            try:
-                # Get all topclients and topqueries from database
-                all_topclients = session.query(TopClient).all()
-                all_topqueries = session.query(TopQuery).all()
 
-                # Export to Victoria Metrics
-                victoria_metrics_exporter.export_metrics(
-                    topclients=all_topclients,
-                    topqueries=all_topqueries,
-                    agents_status=agents_status_list
-                )
-            except Exception as vm_error:
-                logger.error(f'fun:sync_data:Error exporting metrics to Victoria Metrics: {str(vm_error)}')
         sync_dynblock_rules_to_agents(session)
         return jsonify({"status": "success", "message": "Sync completed"})
 
@@ -1350,7 +1244,8 @@ def login():
                     next_url = request.args.get('next') or url_for('dashboard')
                     return redirect(next_url)
                 error = 'Invalid username or password.'
-                logger.error(f'fun:login:Invalid username or password {user.username}')
+                logger.error(f'fun:login:Invalid username or password {username}')
+                log_audit('LOGIN', f'Invalid username or password "{username}"')
             finally:
                 db_session.close()
 
@@ -1378,8 +1273,12 @@ def oidc_initiate():
             oidc_cfg = _get_oidc_config()
         except Exception as e:
             logger.error(f'fun:oidc_initiate:OIDC discovery failed: {e}')
-            return render_template('login.html', error='SSO provider is unavailable. Please try again later.',
-                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 503
+            return render_template(
+                'login.html',
+                error='SSO provider is unavailable. Please try again later.',
+                auth_enabled=settings.AUTH_ENABLED,
+                oidc_enabled=settings.OIDC_ENABLED
+            ), 503
 
         state = secrets.token_urlsafe(32)
         session['oidc_state'] = state
@@ -1418,24 +1317,34 @@ def oidc_callback():
         returned_state = request.args.get('state', '')
         if not returned_state or returned_state != session.pop('oidc_state', None):
             logger.error('fun:oidc_callback:OIDC callback received invalid state – possible CSRF')
-            return render_template('login.html', error='Authentication failed: invalid state.',
-                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+            return render_template(
+                'login.html',
+                error='Authentication failed: invalid state.',
+                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED
+            ), 400
 
         error_param = request.args.get('error')
         if error_param:
             error_desc = request.args.get('error_description', error_param)
             logger.error(f'fun:oidc_callback:OIDC provider returned error: {error_desc}')
-            return render_template('login.html', error=f'SSO error: {error_desc}',
-                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 401
+            return render_template(
+                'login.html',
+                error=f'SSO error: {error_desc}',
+                auth_enabled=settings.AUTH_ENABLED,
+                oidc_enabled=settings.OIDC_ENABLED
+            ), 401
 
         code = request.args.get('code')
         if not code:
-            return render_template('login.html', error='No authorization code received from SSO provider.',
-                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 400
+            return render_template(
+                'login.html',
+                error='No authorization code received from SSO provider.',
+                auth_enabled=settings.AUTH_ENABLED,
+                oidc_enabled=settings.OIDC_ENABLED
+            ), 400
 
         try:
             oidc_cfg = _get_oidc_config()
-
             # Exchange code for tokens
             token_resp = requests.post(
                 oidc_cfg['token_endpoint'],
@@ -1466,8 +1375,12 @@ def oidc_callback():
 
         except Exception as e:
             logger.error(f'fun:oidc_callback:OIDC token/userinfo exchange failed: {e}')
-            return render_template('login.html', error='SSO authentication failed. Please try again.',
-                                auth_enabled=settings.AUTH_ENABLED, oidc_enabled=settings.OIDC_ENABLED), 502
+            return render_template(
+                'login.html',
+                error='SSO authentication failed. Please try again.',
+                auth_enabled=settings.AUTH_ENABLED,
+                oidc_enabled=settings.OIDC_ENABLED
+            ), 502
 
         # Group membership check
         if settings.OIDC_REQUIRED_GROUP:
@@ -1482,7 +1395,7 @@ def oidc_callback():
                 return render_template(
                     'login.html',
                     error=f'Access denied: your account must belong to the '
-                        f'"{settings.OIDC_REQUIRED_GROUP}" group.',
+                    f'"{settings.OIDC_REQUIRED_GROUP}" group.',
                     auth_enabled=settings.AUTH_ENABLED,
                     oidc_enabled=settings.OIDC_ENABLED,
                 ), 403
@@ -1493,12 +1406,10 @@ def oidc_callback():
             or userinfo.get('email')
             or userinfo.get('sub', 'oidc-user')
         )
-
         session.clear()
         session['user_id'] = userinfo.get('sub', oidc_username)
         session['username'] = oidc_username
         session['auth_method'] = 'oidc'
-
         log_audit('LOGIN_OIDC', f'OIDC user "{oidc_username}" logged in')
         next_url = session.pop('oidc_next', url_for('dashboard'))
         return redirect(next_url)
@@ -1509,7 +1420,6 @@ def logout():
     if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
         return render_template('errors/404.html'), 404
     else:
-
         """Log the current user out and redirect to login page"""
         username = session.get('username', 'unknown')
         auth_method = session.get('auth_method', 'local')
@@ -1522,79 +1432,101 @@ def logout():
 @login_required
 def dashboard():
     """Render the main console page"""
-    return render_template('dashboard.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'dashboard.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/agents')
 @login_required
 def agents():
     """Render the agents management page"""
-    return render_template('index.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'index.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/agents/<int:rule_uuid>')
 @login_required
 def agents_id(rule_uuid: int):
     """Render the agents management page"""
-    return render_template('index.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'index.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/rules')
 @login_required
 def rules():
     """Render the rules page"""
-    return render_template('rules.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'rules.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/rules/<string:rule_uuid>')
 @login_required
 def rules_by_uuid(rule_uuid: str):
     """Render the rules page filtered to a specific rule by UUID"""
-    return render_template('rules.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'rules.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/summary')
 @login_required
 def summary():
     """Render the summary page"""
-    return render_template('summary.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'summary.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/dynblock-rules')
 @login_required
 def dynblock_rules_page():
     """Render the DynBlock rules management page"""
-    return render_template('dynblock_rules.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'dynblock_rules.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/dynblock-rules/<string:rule_uuid>')
 @login_required
 def dynblock_by_uuid(rule_uuid: str):
     """Render the DynBlock rules management page"""
-    return render_template('dynblock_rules.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'dynblock_rules.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
 
 
 @app.route('/audit')
 @login_required
 def audit_page():
     """Render the audit logs page"""
-    return render_template('audit.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'audit.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
+
 
 @app.route('/dashboard')
 @login_required
 def dashboard_page():
     """Render the dashboard page"""
-    return render_template('dashboard.html', 
-                         auth_enabled=settings.AUTH_ENABLED)
+    return render_template(
+        'dashboard.html',
+        auth_enabled=settings.AUTH_ENABLED
+    )
+
 
 @app.route('/users')
 @login_required
@@ -1603,9 +1535,12 @@ def users_page():
     if not settings.AUTH_ENABLED and not settings.OIDC_ENABLED:
         return render_template('errors/404.html'), 404
     else:
-        return render_template('users.html', 
-                            auth_enabled=settings.AUTH_ENABLED, 
-                            current_user=session.get('username'))
+        return render_template(
+            'users.html',
+            auth_enabled=settings.AUTH_ENABLED,
+            current_user=session.get('username')
+        )
+
 
 @app.route('/access-list')
 @login_required
@@ -1688,9 +1623,7 @@ def delete_rule(rule_id):
         rule_name = rule.name or f"Rule {rule_id}"
         session.delete(rule)
         session.commit()
-
         logger.debug(f'fun:delete_rule:Deleted rule: {rule_id}')
-
         log_audit(
             action='Delete Rule',
             details=f"Deleted rule '{rule_name}'"
@@ -1720,11 +1653,8 @@ def get_all_rules_id(rule_uuid: str):
     """
     session = db.get_session()
     try:
-
         result = []
-
         dynblock_uuids = set(dbr.rule_uuid for dbr in session.query(DynBlockRule.rule_uuid).distinct())
-
         rules = session.query(Rule).filter(Rule.uuid == rule_uuid).all()
         online_agent_names = set(
             agent.agent_name for agent in session.query(Agent)
@@ -2011,39 +1941,42 @@ def get_sync_status():
 
 
 @app.route('/metrics', methods=['GET'])
-@login_required
+# @login_required
 def get_metrics():
-    """Get Prometheus-formatted metrics for all agents"""
-    session = db.get_session()
-    try:
-        # Get all topclients, topqueries, and agent status
-        all_topclients = session.query(TopClient).all()
-        all_topqueries = session.query(TopQuery).all()
+    print(metrics_exporter.enabled)
 
-        agents = session.query(Agent).options(joinedload(Agent.group)).all()
-        agents_status_list = []
-        for agent in agents:
-            agents_status_list.append({
-                'agent_name': agent.agent_name,
-                'status': 'unknown' if agent.is_active else 'disabled',
-                'is_active': agent.is_active,
-                'group_name': agent.group.name if agent.group else None
-            })
+    if metrics_exporter.enabled:
+        session = db.get_session()
+        try:
+            # Get all topclients, topqueries, and agent status
+            all_topclients = session.query(TopClient).all()
+            all_topqueries = session.query(TopQuery).all()
 
-        if victoria_metrics_exporter:
-            metrics_text = victoria_metrics_exporter.get_prometheus_metrics(
+            agents = session.query(Agent).options(joinedload(Agent.group)).all()
+            agents_status_list = []
+            for agent in agents:
+                agents_status_list.append({
+                    'agent_name': agent.agent_name,
+                    'status': agent.status,
+                    'is_active': agent.is_active,
+                    'group_name': agent.group.name if agent.group else None,
+                    'version': agent.version if agent.version else None
+                })
+
+            metrics_text = metrics_exporter.get_prometheus_metrics(
                 topclients=all_topclients,
                 topqueries=all_topqueries,
                 agents_status=agents_status_list
             )
             return metrics_text, 200, {'Content-Type': 'text/plain; version=0.0.4'}
-        else:
-            return '# Victoria Metrics exporter not initialized\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
-    except Exception as e:
-        logger.error(f'fun:get_metrics:Error generating metrics: {str(e)}')
-        return f'# Error generating metrics: {str(e)}\n', 500, {'Content-Type': 'text/plain; version=0.0.4'}
-    finally:
-        session.close()
+
+        except Exception as e:
+            logger.error(f'fun:get_metrics:Error generating metrics: {str(e)}')
+            return f'# Error generating metrics: {str(e)}\n', 500, {'Content-Type': 'text/plain; version=0.0.4'}
+        finally:
+            session.close()
+    else:
+        return '# Metrics exporter not initialized\n', 200, {'Content-Type': 'text/plain; version=0.0.4'}
 
 
 @app.route('/api/backend-health', methods=['GET'])
@@ -2254,6 +2187,48 @@ def update_agent(agent_id):
         session.close()
 
 
+def delete_all_with_agent(model_class, agentname):
+
+    session = db.get_session()
+    model_name = model_class.__name__
+    if not model_class:
+        return jsonify({
+            'success': False,
+            'error': f'{model_class} not found'
+        }), 500
+    try:
+        current_acl = session.query(model_class).filter_by(agent_name=agentname).all()
+        if not current_acl:
+            return jsonify({
+                'success': True,
+                'error': f'{model_name} not found'
+            }), 200
+        count = 0
+        for i in current_acl:
+            session.delete(i)
+            count += 1
+        session.commit()
+        logger.debug(f'fun:delete_all_with_agent:Deleted all {model_name} for : {agentname} count: {count}')
+        log_audit(
+            action=f'Delete {model_name}',
+            details=f'Delete {model_name} for {agentname}'
+        )
+        return jsonify({
+            'success': True,
+            'message': f'All {model_name} deleted successfully'
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f'fun:delete_all_with_agent:Error deleting {model_name} for {agentname}: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        session.close()
+
+
 @app.route('/api/agents/<int:agent_id>', methods=['DELETE'])
 @login_required
 def delete_agent(agent_id):
@@ -2272,7 +2247,25 @@ def delete_agent(agent_id):
             details=f"Deleted agent '{agent_name}'"
         )
 
-        return jsonify({'success': True, 'message': 'Agent deleted successfully'})
+        response_rule, status_code_rule = delete_all_with_agent(Rule, agent_name)
+        response_ds, status_code_ds = delete_all_with_agent(DownstreamServer, agent_name)
+        response_acl, status_code_acl = delete_all_with_agent(ManagerList, agent_name)
+        response_tclients, status_code_tclients = delete_all_with_agent(TopClient, agent_name)
+        response_tqueryes, status_code_tqueryes = delete_all_with_agent(TopQuery, agent_name)
+
+        if all([
+            status_code_rule == 200,
+            status_code_acl == 200,
+            status_code_ds == 200,
+            status_code_tclients == 200,
+            status_code_tqueryes == 200
+        ]):
+            logger.debug(f'fun:delete_agent:Successfully deleting ALL for : {agent_name}')
+            return jsonify({'success': True, 'message': f'Successfully delete agent {agent_name}'}), 200
+        else:
+            logger.error(f'fun:delete_agent:Error deleting ALL rules: {agent_name}')
+            return jsonify({'success': False, 'message': f'Error deleted agent {agent_name}'}), 500
+
     except Exception as e:
         session.rollback()
         logger.error(f'fun:delete_agent:Error deleting agent: {str(e)}')
@@ -2309,15 +2302,8 @@ def execute_command():
         agent_url = agent.get_url()
         # Send command to agent
         try:
-            response = requests.post(
-                f'{agent_url}/api/v1/command',
-                json={'command': command},
-                headers={
-                    'Content-Type': 'application/json',
-                    'X-Agent-Token': agent.agent_token
-                },
-                timeout=settings.TIMEOUT_AGENT
-            )
+            response = command_to_send(agent, command, execute_command.__name__)
+
             response_data = response.json()
             logger.debug(f"fun:execute_command:response_data {response_data}")
             # Check if this is a showRules() command and parse the output
@@ -2348,6 +2334,7 @@ def execute_command():
                 logger.debug(f"fun:execute_command:Error detected {response_data}")
                 response_data['parsed_rules'] = "Error detected"
                 response_data['success'] = False
+                response_data['error'] = "Error detected"
 
             if result and not isinstance(result, str):
                 result = json.dumps(result)
@@ -2424,6 +2411,7 @@ def execute_broadcast_command():
 
         # Send command to all agents
         for agent in agents:
+
             agent_url = agent.get_url()
             result = {
                 'agent_id': agent.id,
@@ -2434,20 +2422,14 @@ def execute_broadcast_command():
                 'error': None
             }
             try:
-                response = requests.post(
-                    f'{agent_url}/api/v1/command',
-                    json={'command': command},
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Agent-Token': agent.agent_token
-                    },
-                    timeout=settings.TIMEOUT_AGENT
-                )
+                response = command_to_send(agent, command, execute_broadcast_command.__name__)
                 response_data = response.json()
+                logger.debug(f"fun:execute_broadcast_command:return {response_data}")
+
                 result['success'] = response_data.get('success', False)
                 result['result'] = response_data.get('result')
                 result['error'] = response_data.get('error')
- 
+
                 # Check if this is a showRules() command and parse the output
                 if result['success'] and command.strip().startswith('showRules'):
                     result_text = result['result']
@@ -2464,7 +2446,6 @@ def execute_broadcast_command():
                         # Add parsed servers to result
                         result['parsed_servers'] = parsed_servers
 
-
                 # Save to history - encode result as JSON if it's not a simple string
                 result_data = result['result']
                 result_pars = response_data.get('result', '')
@@ -2472,7 +2453,6 @@ def execute_broadcast_command():
                 if re.search(r'^Error:', result_pars):
                     logger.debug(f"fun:execute_broadcast_command:Error detected brodcast {result_data}")
                     result['success'] = False
-     
                 if result_data and not isinstance(result_data, str):
                     result_data = json.dumps(result_data)
                 elif isinstance(result_data, str):
@@ -2487,9 +2467,10 @@ def execute_broadcast_command():
                 )
                 session.add(history)
 
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 logger.error(f'fun:execute_broadcast_command:Error sending command to agent {agent_url}: {str(e)}')
                 result['error'] = f'Failed to connect to agent: {str(e)}'
+                result['result'] = f'Failed to connect to agent: {str(e)}'
 
                 # Save failed attempt to history
                 history = CommandHistory(
@@ -2615,7 +2596,7 @@ def get_autocomplete_suggestions():
 
         # Build subquery to get the most recent execution time for each command
         # from sqlalchemy import func
-        
+
         subquery = session.query(
             CommandHistory.command,
             func.max(CommandHistory.executed_at).label('latest_execution')
@@ -2887,6 +2868,12 @@ def create_dynblock_rule():
         else:
             group_id = int(group_id)
 
+        access_list_id = data.get('access_list_id')
+        if access_list_id in ('', 'all', None):
+            access_list_id = None
+        else:
+            access_list_id = int(access_list_id)
+
         # Auto-generate creation_order by finding the max value and incrementing
         max_order = session.query(sa.func.max(DynBlockRule.creation_order)).scalar()
         creation_order = (max_order or 0) + 1
@@ -2897,7 +2884,8 @@ def create_dynblock_rule():
             description=data.get('description') or None,
             group_id=group_id,
             creation_order=creation_order,
-            rule_uuid=get_uuid
+            rule_uuid=get_uuid,
+            access_list_id=access_list_id,
         )
 
         session.add(rule)
@@ -2906,7 +2894,7 @@ def create_dynblock_rule():
         # Re-query rule with group relationship eagerly loaded to avoid lazy loading
         rule = session.query(DynBlockRule).options(joinedload(DynBlockRule.group)).filter_by(id=rule.id).first()
 
-        logger.debug(f'fun:create_dynblock_rule:Created DynBlock rule: {rule.rule_command}')
+        logger.debug(f'fun:create_dynblock_rule:Created DynBlock rule: {rule.rule_command} {access_list_id}')
 
         # Log audit event
         log_audit(
@@ -3502,25 +3490,23 @@ def revoke_user_token(user_id):
 
 
 def get_access_list_data(list_type=None, category=None, enabled=None):
-
-
     db_session = db.get_session()
     try:
         query = db_session.query(AccessList)
-        
+
         # if list_type in ('block', 'white'):
         #     query = query.filter(AccessList.type == list_type)
-        
+
         if category:
             query = query.filter(AccessList.category == category)
-        
+
         if enabled is not None:
             query = query.filter(AccessList.enabled == enabled)
-        
+
         entries = query.order_by(AccessList.id.desc()).all()
-        
+
         return {
-            'success': True, 
+            'success': True,
             'entries': [e.to_dict() for e in entries],
             'count': len(entries)
         }
@@ -3538,13 +3524,10 @@ def get_manager_list():
     db_session = db.get_session()
     try:
         current_records = db_session.query(ManagerList).all()
-        t=[]
+        t = []
         for u in current_records:
-
             t.append(u.to_dict())
-
         return jsonify({'success': True, 'managerlist': t})
-
 
     except Exception as e:
         logger.error(f'fun:get_manager_list:Error fetching managerlist: {str(e)}')
@@ -3560,17 +3543,18 @@ def get_access_list():
     list_type = request.args.get('type')
     category = request.args.get('category')
     enabled_param = request.args.get('enabled')
-    
+
     enabled = None
     if enabled_param is not None:
         enabled = enabled_param.lower() == 'true'
-    
+
     result = get_access_list_data(list_type, category, enabled)
-    
+
     if result['success']:
         return jsonify(result), 200
     else:
         return jsonify(result), 500
+
 
 @app.route('/api/access-list', methods=['POST'])
 @login_required
@@ -3634,7 +3618,6 @@ def update_access_list_entry(entry_id):
         if 'name' in data:
             entry.name = (data['name'] or '').strip()
 
-
         if 'value' in data:
             v = (data['value'] or '').strip()
             if not v:
@@ -3644,7 +3627,7 @@ def update_access_list_entry(entry_id):
         if 'type' in data:
             t = (data['type'] or '').strip()
             # if t not in ('block', 'white', 'list'):
-            # if t not in ('block', 'white', 'list'):    
+            # if t not in ('block', 'white', 'list'):
             #     return jsonify({'success': False, 'error': 'Type must be "block" or "white"'}), 400
             entry.type = t
 
@@ -3659,7 +3642,6 @@ def update_access_list_entry(entry_id):
 
         if 'source' in data:
             entry.source = (data['source'] or '').strip() or None
-
 
         db_session.commit()
         log_audit('UPDATE_ACCESS_LIST', f'Access list entry id={entry_id} updated by "{session.get("username")}"')
@@ -3698,7 +3680,7 @@ def delete_access_list_entry(entry_id):
 
 
 def main():
-    # Database and Victoria Metrics are already initialized in create_app()
+    # Database and Metrics are already initialized in create_app()
     logger.info(f'Starting Dnsdist Web Console on {settings.CONSOLE_HOST}:{settings.CONSOLE_PORT}')
     logger.info(f'Using database: {settings.DATABASE_URL}')
     logger.debug(f"Start with debug={settings.DEBUG}")
